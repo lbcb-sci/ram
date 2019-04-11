@@ -1,7 +1,7 @@
 #include <string>
 #include <vector>
 
-#include "ram_aligner.hpp"
+#include "aligner.hpp"
 
 #define MATCH    0
 #define INSERT   1

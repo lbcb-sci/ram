@@ -1,17 +1,29 @@
-cmake_minimum_required (VERSION 3.5)
+cmake_minimum_required(VERSION 3.2)
+project(ram)
 
-project (ram-mapper)
+include(GNUInstallDirs)
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++1y")
-set (source_dir "${PROJECT_SOURCE_DIR}/src/")
-set (CMAKE_BUILD_TYPE Release)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
-add_subdirectory(vendor/bioparser EXCLUDE_FROM_ALL)
-#add_subdirectory(vendor/thread_pool EXCLUDE_FROM_ALL)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_library(ram_minimizer src/ram_minimizer.cpp)
-add_library(ram_aligner src/ram_aligner.cpp)
+if (NOT TARGET bioparser)
+    add_subdirectory(vendor/bioparser EXCLUDE_FROM_ALL)
+endif()
+# if (NOT TARGET thread_pool)
+    # add_subdirectory(vendor/thread_pool EXCLUDE_FROM_ALL)
+# endif()
 
-add_executable (ram-mapper src/ram_mapper.cpp)
+add_executable(ram
+    src/aligner.cpp
+    src/main.cpp
+    src/minimizers.cpp)
 
-target_link_libraries(ram-mapper bioparser ram_minimizer ram_aligner)
+target_link_libraries(ram bioparser)
+
+install(TARGETS ram DESTINATION ${CMAKE_INSTALL_BINDIR})

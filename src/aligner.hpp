@@ -1,3 +1,4 @@
+#pragma once
 
 int pairwise_alignment(const char* query, uint64_t query_length,
                        const char* target, uint64_t target_length,

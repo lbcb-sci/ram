@@ -1,2 +1,5 @@
-build
-data
+# Compiled Object files
+build/
+
+# Auxiliary data files
+data/
