@@ -284,17 +284,24 @@ int main(int argc, char** argv) {
     std::vector<std::unique_ptr<Sequence>> containee_reads;
     sparser->parse(containee_reads, -1);
 
-    std::string& containee = containee_reads.front()->data;
+    std::string containee = containee_reads.front()->data;
 
     std::vector<std::unique_ptr<Sequence>> contained_reads;
     tparser->parse(contained_reads, -1);
     std::string& contained = contained_reads.front()->data;
 
+    auto containee_mini = ram::createMinimizers(containee.c_str(), contained.size(), 15, 5);
+    auto contained_mini = ram::createMinimizers(contained.c_str(), contained.size(), 15, 5);
+
+    ram::map(containee_mini, contained_mini);
+
+    return 0;
+
     std::cout << "Containee size: " << containee.length() << std::endl;
     std::cout << "Contained size: " << contained.length() << std::endl;
 
     std::vector<Minimizer> minimizers_contained;
-    minimizers_contained = create_minimizers(contained.c_str(),
+    minimizers_contained = createMinimizers(contained.c_str(),
         contained.length(), kmer_length, window_length);
 
     std::cout << "Minimizers contained: " << minimizers_contained.size() << std::endl;
@@ -315,7 +322,7 @@ int main(int argc, char** argv) {
     std::cout << "End minimizers size: " << end_minimizers.size() << std::endl;
 
     std::vector<Minimizer> minimizers_containee;
-    minimizers_containee = create_minimizers(containee.c_str(),
+    minimizers_containee = createMinimizers(containee.c_str(),
         containee.length(), kmer_length, window_length);
 
     std::vector<Match> matches_start = get_matches(start_minimizers, minimizers_containee);

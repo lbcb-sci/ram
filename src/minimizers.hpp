@@ -1,7 +1,7 @@
 /*!
- * @file minimizers.hpp
+ * @file minimizer.hpp
  *
- * @brief minimizers header file
+ * @brief Minimizer class header file
  */
 
 #pragma once
@@ -9,10 +9,24 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <utility>
+#include <tuple>
+
+namespace ram {
+
+std::vector<std::pair<std::uint64_t, std::uint32_t>> createMinimizers(
+    const char* sequence, std::uint32_t sequence_length,
+    std::uint32_t k, std::uint32_t w);
+
+std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t> map(
+    const std::vector<std::pair<std::uint64_t, std::uint32_t>>& lhs,
+    const std::vector<std::pair<std::uint64_t, std::uint32_t>>& rhs);
+
+}
 
 struct Minimizer {
     std::uint64_t value;
-    std::uint64_t location;
+    std::uint32_t location;
     bool strand;
 
     Minimizer(std::uint64_t value, std::uint64_t location, bool strand) {
@@ -26,8 +40,8 @@ struct Minimizer {
     }
 
     std::string to_string() const {
-        return "Location: " + std::to_string(location) + ", value: " +
-            std::to_string(value) + ", strand: " + std::to_string(strand);
+        return "Location: " + std::to_string(location >> 1) + ", value: " +
+            std::to_string(value) + ", strand: " + std::to_string(location & 1);
     }
 };
 
@@ -77,5 +91,5 @@ struct Cluster {
     }
 };
 
-std::vector<Minimizer> create_minimizers(const char* sequence,
+std::vector<Minimizer> createMinimizers(const char* sequence,
     std::uint64_t sequence_length, std::uint64_t k, std::uint64_t window_length);
