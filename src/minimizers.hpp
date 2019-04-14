@@ -14,9 +14,12 @@
 
 namespace ram {
 
-std::vector<std::pair<std::uint64_t, std::uint32_t>> createMinimizers(
-    const char* sequence, std::uint32_t sequence_length,
+void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
+    const char* sequence, std::uint32_t sequence_length, std::uint32_t id,
     std::uint32_t k, std::uint32_t w);
+
+void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
+    std::uint32_t k);
 
 std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t> map(
     const std::vector<std::pair<std::uint64_t, std::uint32_t>>& lhs,

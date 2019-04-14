@@ -5,11 +5,13 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
+#include <unordered_map>
 
 #include "minimizers.hpp"
 #include "aligner.hpp"
 
 #include "bioparser/bioparser.hpp"
+#include "logger/logger.hpp"
 
 static const std::string version = "v0.0.1";
 
@@ -284,18 +286,78 @@ int main(int argc, char** argv) {
     std::vector<std::unique_ptr<Sequence>> containee_reads;
     sparser->parse(containee_reads, -1);
 
-    std::string containee = containee_reads.front()->data;
-
     std::vector<std::unique_ptr<Sequence>> contained_reads;
     tparser->parse(contained_reads, -1);
-    std::string& contained = contained_reads.front()->data;
 
-    auto containee_mini = ram::createMinimizers(containee.c_str(), contained.size(), 15, 5);
-    auto contained_mini = ram::createMinimizers(contained.c_str(), contained.size(), 15, 5);
 
-    ram::map(containee_mini, contained_mini);
+    auto logger = logger::Logger();
+    logger.log();
+
+    std::unordered_map<uint64_t, std::vector<uint64_t>> minimizer_hash;
+
+    uint32_t id = 0;
+    std::vector<std::pair<uint64_t, uint64_t>> minimizers;
+    for (const auto& it: contained_reads) {
+        ram::createMinimizers(minimizers, it->data.c_str(), it->data.size(), id, 15, 5);
+        ++id;
+    }
+
+    std::cerr << minimizers.size() << std::endl;
+
+    logger.log("[ram::] collected minimizers in");
+    logger.log();
+
+    ram::sortMinimizers(minimizers, 15);
+
+    logger.log("[ram::] sorted minimizers in");
+    logger.log();
+
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        if (i != 0 && minimizers[i].first == minimizers[i-1].first &&
+            minimizers[i].second < minimizers[i - 1].second) {
+            std::cerr << minimizers[i].first << " " << (minimizers[i].second >> 32) << " " << (static_cast<std::uint32_t>(minimizers[i].second) >> 1) << " " << (minimizers[i].second & 1) << std::endl;
+            std::cerr << minimizers[i - 1].first << " " << (minimizers[i - 1].second >> 32) << " " << (static_cast<std::uint32_t>(minimizers[i - 1].second) >> 1) << " " << (minimizers[i - 1].second & 1) << std::endl;
+            //throw std::logic_error("minimizers");
+        }
+    }
+
+    std::uint32_t num_minimizers = 0;
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+            ++num_minimizers;
+        }
+    }
+
+    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> hash;
+    hash.reserve(num_minimizers);
+
+    std::vector<std::uint32_t> counts;
+    counts.reserve(num_minimizers);
+
+    std::uint32_t count = 0;
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+            hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
+            counts.emplace_back(count);
+            count = 0;
+        }
+        ++count;
+    }
+
+    logger.log("[ram::] created hash in");
+    logger.log();
+
+    std::sort(counts.begin(), counts.end());
+
+    std::cerr << hash.size() << std::endl;
+    std::cerr << counts[(1 - 0.001) * counts.size()] << std::endl;
+
+    logger.log("[ram::] found occurences in");
 
     return 0;
+
+    std::string& containee = containee_reads.front()->data;
+    std::string& contained = contained_reads.front()->data;
 
     std::cout << "Containee size: " << containee.length() << std::endl;
     std::cout << "Contained size: " << contained.length() << std::endl;

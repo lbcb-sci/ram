@@ -14,96 +14,104 @@
 
 namespace ram {
 
-inline std::uint8_t coder(char c) {
-    switch (c) {
-        case 'A':
-        case 'a': return 1;
-        case 'C':
-        case 'c': return 0;
-        case 'G':
-        case 'g': return 3;
-        case 'T':
-        case 't': return 2;
-        default: throw std::invalid_argument("[ram::coder] error: "
-            "invalid character!");
-    }
-}
+std::vector<uint8_t> coder = {
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255,   0, 255,   1, 255, 255, 255,   2, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255,   3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255,   0, 255,   1, 255, 255, 255,   2, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255,   3, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+};
 
-inline std::uint8_t reverseCoder(char c) {
-    switch (c) {
-        case 'A':
-        case 'a': return 2;
-        case 'C':
-        case 'c': return 3;
-        case 'G':
-        case 'g': return 0;
-        case 'T':
-        case 't': return 1;
-        default: throw std::invalid_argument("[ram::reverseCoder] error: "
-            "invalid character!");
-    }
-}
+void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
+    const char* sequence, std::uint32_t sequence_length, std::uint32_t id,
+    std::uint32_t k, std::uint32_t w) {
 
-std::vector<std::pair<std::uint64_t, std::uint32_t>> createMinimizers(
-    const char* sequence, std::uint32_t sequence_length, std::uint32_t k,
-    std::uint32_t w) {
-
-    if (k > 31) {
+    if (k > 32) {
         throw std::invalid_argument("[ram::createMinimizers] error: "
             "invalid kmer size!");
     }
 
-    std::vector<std::pair<std::uint64_t, std::uint32_t>> minimizers;
     if (sequence_length < k) {
-        return minimizers;
+        return;
     }
 
     uint64_t mask = (1 << (k * 2)) - 1;
+    uint64_t shift = (k - 1) * 2;
     uint64_t minimizer = 0, reverse_minimizer = 0;
 
-    std::deque<std::pair<std::uint64_t, std::uint32_t>> window;
-    auto window_add = [&window](std::uint64_t value, std::uint32_t location) -> void {
+    std::deque<std::pair<std::uint64_t, std::uint64_t>> window;
+    auto window_add = [&window](std::uint64_t value, std::uint64_t location) -> void {
         while (!window.empty() && window.back().first > value) {
             window.pop_back();
         }
         window.emplace_back(value, location);
     };
     auto window_update = [&window](std::uint32_t position) -> void {
-        while (!window.empty() && (window.front().second >> 1) < position) {
+        while (!window.empty() && (static_cast<std::uint32_t>(window.front().second) >> 1) < position) {
             window.pop_front();
         }
     };
 
+    std::uint64_t t = static_cast<std::uint64_t>(id) << 32;
+
     for (std::uint32_t i = 0; i < sequence_length - k + 1; ++i) {
-        minimizer = (minimizer << 2 | coder(sequence[i])) & mask;
-        reverse_minimizer = (reverse_minimizer << 2 |
-            reverseCoder(sequence[sequence_length - i - 1])) & mask;
+        std::uint64_t c = coder[sequence[i]];
+        if (c == 255) {
+            throw std::invalid_argument("[ram::createMinimizers] error: "
+                "invalid character!");
+        }
+        minimizer = ((minimizer << 2) | c) & mask;
+        reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
         if (i >= (k - 1) + w) {
-            if (minimizers.empty() ||
-                minimizers.back().second != window.front().second) {
-                minimizers.emplace_back(window.front());
+            if (dst.empty() ||
+                dst.back().second != window.front().second) {
+                dst.emplace_back(window.front());
             }
             window_update(i - (k - 1) - (w - 1));
         }
         if (i >= k - 1) {
             if (minimizer < reverse_minimizer) {
-                window_add(minimizer, (i - (k - 1)) << 1 | 0);
+                window_add(minimizer, t | ((i - (k - 1)) << 1 | 0));
             } else if (minimizer > reverse_minimizer) {
-                window_add(reverse_minimizer, (i - (k - 1)) << 1 | 1);
+                window_add(reverse_minimizer, t | ((i - (k - 1)) << 1 | 1));
             }
         }
     }
-
-    std::sort(minimizers.begin(), minimizers.end(), [](
-        const std::pair<std::uint64_t, std::uint32_t>& lhs,
-        const std::pair<std::uint64_t, std::uint32_t>& rhs) {
-            if (lhs.first < rhs.first) return true;
-            if (lhs.first == rhs.second) return lhs.second < rhs.second;
-            return false;
-        });
-
-    return minimizers;
 }
+
+void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
+    std::uint32_t k) {
+
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> dst(src.size());
+    std::uint32_t buckets[0x100] = {};
+    std::uint32_t max_shift = ((2 * k + 7) / 8) * 8;
+
+    for (std::uint32_t shift = 0; shift < max_shift; shift += 8) {
+        std::uint32_t counts[0x100] = {};
+        for (const auto& it: src) {
+            ++counts[(it.first >> shift) & 0xFF];
+        }
+        for (std::uint32_t i = 0, j = 0; i < 0x100; j += counts[i++]) {
+            buckets[i] = j;
+        }
+        for (const auto& it: src) {
+            dst[buckets[(it.first >> shift) & 0xFF]++] = it;
+        }
+        src.swap(dst);
+    }
+}
+
 
 std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t> map(
     const std::vector<std::pair<std::uint64_t, std::uint32_t>>& lhs,
@@ -127,9 +135,9 @@ std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t> map(
         }
     }
 
-    for (const auto& it: matches) {
-        std::cerr << (it.first >> 1) << " " << (it.second >> 1) << std::endl;
-    }
+    //for (const auto& it: matches) {
+        //std::cerr << (it.first >> 1) << " " << (it.second >> 1) << std::endl;
+    //}
 
     return std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>();
 }
