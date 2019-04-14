@@ -282,12 +282,12 @@ int main(int argc, char** argv) {
     }
 
     std::vector<std::unique_ptr<Sequence>> containee_reads;
-    sparser->parse(containee_reads, -1);
+    sparser->parse_objects(containee_reads, -1);
 
     std::string containee = containee_reads.front()->data;
 
     std::vector<std::unique_ptr<Sequence>> contained_reads;
-    tparser->parse(contained_reads, -1);
+    tparser->parse_objects(contained_reads, -1);
     std::string& contained = contained_reads.front()->data;
 
     auto containee_mini = ram::createMinimizers(containee.c_str(), contained.size(), 15, 5);
