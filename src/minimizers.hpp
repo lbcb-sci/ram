@@ -11,6 +11,7 @@
 #include <vector>
 #include <utility>
 #include <tuple>
+#include <unordered_map>
 
 namespace ram {
 
@@ -21,9 +22,10 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
 void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     std::uint32_t k);
 
-std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t> map(
-    const std::vector<std::pair<std::uint64_t, std::uint32_t>>& lhs,
-    const std::vector<std::pair<std::uint64_t, std::uint32_t>>& rhs);
+std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
+    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash);
 
 }
 
@@ -87,12 +89,9 @@ struct Cluster {
     }
 
     std::string to_string() const {
-        return "ReadStart: " + std::to_string(read_start) + " readLen: " +
-            std::to_string(read_length) + ", refStart: " + std::to_string(ref_start) +
-            ", refLen: " + std::to_string(ref_length) + ", strand: " +
+        return "RefStart: " + std::to_string(read_start) + " refLen: " +
+            std::to_string(read_length) + ", readStart: " + std::to_string(ref_start) +
+            ", readLen: " + std::to_string(ref_length) + ", strand: " +
             std::to_string(strand);
     }
 };
-
-std::vector<Minimizer> createMinimizers(const char* sequence,
-    std::uint64_t sequence_length, std::uint64_t k, std::uint64_t window_length);
