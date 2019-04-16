@@ -335,6 +335,13 @@ int main(int argc, char** argv) {
     std::cerr << counts[(1 - 0.001) * counts.size()] << std::endl;
 
     logger.log("[ram::] found occurences in");
+    logger.log();
+
+    ram::longestIncreasingSubsequence(minimizers.begin(), minimizers.end());
+
+    logger.log("[ram::] found lis in");
+
+    return 0;
 
     uint32_t read_shorter_than_2000 = 0;
 

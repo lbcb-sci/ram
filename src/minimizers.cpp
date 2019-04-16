@@ -9,6 +9,7 @@
 #include <set>
 #include <stdexcept>
 #include <algorithm>
+#include <memory>
 
 #include "minimizers.hpp"
 
@@ -58,7 +59,7 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
         window.emplace_back(value, location);
     };
     auto window_update = [&window](std::uint32_t position) -> void {
-        while (!window.empty() && (static_cast<std::uint32_t>(window.front().second) >> 1) < position) {
+        while (!window.empty() && (window.front().second << 32 >> 33) < position) {
             window.pop_front();
         }
     };
@@ -110,6 +111,36 @@ void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
         }
         src.swap(dst);
     }
+}
+
+void longestIncreasingSubsequence(
+    std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator begin,
+    std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator end) {
+
+    std::unique_ptr<std::uint32_t[]> temp(new std::uint32_t[end - begin + 1]());
+    std::unique_ptr<std::uint32_t[]> predecessor(new std::uint32_t[end - begin]());
+
+    std::uint32_t longest = 0;
+    for (std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator it = begin; it != end; ++it) {
+        std::uint32_t l = 1, h = longest;
+        while (l <= h) {
+            std::uint32_t m = (l + h) >> 1;
+            if (((begin + temp[m])->second << 32 >> 32) < it->second << 32 >> 32) {
+                l = m + 1;
+            } else {
+                h = m - 1;
+            }
+        }
+
+        predecessor[it - begin] = temp[l - 1];
+        temp[l] = it - begin;
+
+        if (longest < l) {
+            longest = l;
+        }
+    }
+
+    std::cerr << longest << std::endl;
 }
 
 std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
