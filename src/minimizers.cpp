@@ -125,7 +125,24 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
         if (value != hash.end()) {
             auto range = value->second;
             for (std::uint32_t j = range.first; j < range.first + range.second; j++) {
-                matches.emplace_back(lhs[i].second, rhs[j].second);
+                std::uint32_t strand = (lhs[i].second & 1) == (rhs[j].second & 1);
+                std::uint64_t query_id = lhs[i].second >> 32;
+                std::uint64_t target_id = rhs[j].second >> 32;
+
+                if (query_id >= target_id) {
+                    continue;
+                }
+
+                std::uint32_t query_pos = (static_cast<std::uint32_t>(lhs[i].second) >> 1);
+                std::uint32_t target_pos = (static_cast<std::uint32_t>(rhs[j].second) >> 1);
+
+                std::uint32_t diagonal_diff = strand ? (1<<31) +(target_pos-query_pos) : target_pos+query_pos;
+
+                std::uint64_t match_first = (((target_id << 1) | strand) << 32) | static_cast<std::uint64_t>(diagonal_diff);
+                std::uint64_t match_second = (static_cast<std::uint64_t>(target_pos) << 32) | static_cast<std::uint64_t>(query_pos);
+
+                // std::cout << match_first << " " << match_second << std::endl;
+                matches.emplace_back(match_first, match_second);
             }
         }
     }
