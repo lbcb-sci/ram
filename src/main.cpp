@@ -130,10 +130,12 @@ std::bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint
     return min_query_pos < min_target_pos && max_query_pos < max_target_pos;
 }
 
-std::vector<std::pair<std::uint64_t, std::uint64_t>> find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches) {
+std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches) {
+
+    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
 
     if (matches.size() <= 0) {
-        return matches;
+        return clusters;
     }
 
     std::sort(matches.begin(), matches.end(), [](
@@ -144,7 +146,6 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> find_best_matches(std::vect
             return false;
         });
 
-    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
     std::cout << "Size of matches" << std::endl;
 
     bool found_contained = false;
@@ -154,40 +155,59 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> find_best_matches(std::vect
 
     while(current_it != matches.end()) {
         if ((previous_it->first >> 32) != (current_it->first >> 32)) {
-            std::cout << "----" << std::endl;
-            auto tmp_it = start_it;
-            while(tmp_it != current_it) {
-                std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
-                tmp_it += 1;
+            // std::cout << "----" << std::endl;
+            // auto tmp_it = start_it;
+            // while(tmp_it != current_it) {
+            //     std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
+            //     tmp_it += 1;
+            // }
+            // std::cout << "----" << std::endl;
+            auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
+            clusters.emplace_back(cluster);
+
+            auto are_contained = are_clusters_contained(clusters);
+            if (are_contained) {
+                return clusters;
             }
-            std::cout << "----" << std::endl;
+
+            clusters.empty();
 
             start_it = current_it;
         } else if ((((current_it->first << 32) >> 32) - ((previous_it->first << 32) >> 32)) > 200) {
-            std::cout << "xxxx" << std::endl;
-            auto tmp_it = start_it;
-            while(tmp_it != current_it) {
-                std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
-                tmp_it += 1;
-            }
-            std::cout << "xxxx" << std::endl;
+            // std::cout << "xxxx" << std::endl;
+            // auto tmp_it = start_it;
+            // while(tmp_it != current_it) {
+            //     std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
+            //     tmp_it += 1;
+            // }
+            // std::cout << "xxxx" << std::endl;
+            auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
+            clusters.emplace_back(cluster);
             start_it = current_it;
         }
         previous_it = current_it;
         current_it += 1;
     }
 
-    std::cout << "----" << std::endl;
-    auto tmp_it = start_it;
-    while(tmp_it != current_it) {
-        std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
-        tmp_it += 1;
+    // std::cout << "----" << std::endl;
+    // auto tmp_it = start_it;
+    // while(tmp_it != current_it) {
+    //     std::cout << tmp_it->first << " " << tmp_it->second << std::endl;
+    //     tmp_it += 1;
+    // }
+    // std::cout << "----" << std::endl;
+
+    // std::cout << "gotovo" << std::endl;
+
+    auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
+    clusters.emplace_back(cluster);
+
+    auto are_contained = are_clusters_contained(clusters);
+    if (are_contained) {
+        return clusters;
     }
-    std::cout << "----" << std::endl;
 
-    std::cout << "gotovo" << std::endl;
-
-    return matches;
+    return cluster;
 }
 
 inline bool isSuffix(const std::string& src, const std::string& suffix) {
