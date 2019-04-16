@@ -22,7 +22,7 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
 void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     std::uint32_t k);
 
-void longestIncreasingSubsequence(
+std::vector<std::uint32_t> longestIncreasingSubsequence(
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator begin,
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator end);
 

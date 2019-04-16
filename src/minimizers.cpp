@@ -94,6 +94,11 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
 void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     std::uint32_t k) {
 
+    if (src.empty()) {
+        throw std::invalid_argument("[ram::sortMinimizers] error: "
+            "empty minimizer set");
+    }
+
     std::vector<std::pair<std::uint64_t, std::uint64_t>> dst(src.size());
     std::uint32_t buckets[0x100] = {};
     std::uint32_t max_shift = ((2 * k + 7) / 8) * 8;
@@ -113,34 +118,43 @@ void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     }
 }
 
-void longestIncreasingSubsequence(
+std::vector<std::uint32_t> longestIncreasingSubsequence(
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator begin,
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator end) {
 
-    std::unique_ptr<std::uint32_t[]> temp(new std::uint32_t[end - begin + 1]());
+    if (begin == end) {
+        throw std::invalid_argument("[ram::longestIncreasingSubsequence] error: "
+            "empty match set");
+    }
+
+    std::unique_ptr<std::uint32_t[]> smallest(new std::uint32_t[end - begin + 1]());
     std::unique_ptr<std::uint32_t[]> predecessor(new std::uint32_t[end - begin]());
 
-    std::uint32_t longest = 0;
-    for (std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator it = begin; it != end; ++it) {
-        std::uint32_t l = 1, h = longest;
+    std::uint32_t length = 0;
+    for (auto it = begin; it != end; ++it) {
+        std::uint32_t l = 1, h = length;
         while (l <= h) {
             std::uint32_t m = (l + h) >> 1;
-            if (((begin + temp[m])->second << 32 >> 32) < it->second << 32 >> 32) {
+            if (((begin + smallest[m])->second << 32 >> 32) < it->second << 32 >> 32) {
                 l = m + 1;
             } else {
                 h = m - 1;
             }
         }
 
-        predecessor[it - begin] = temp[l - 1];
-        temp[l] = it - begin;
-
-        if (longest < l) {
-            longest = l;
-        }
+        predecessor[it - begin] = smallest[l - 1];
+        smallest[l] = it - begin;
+        length = std::max(length, l);
     }
 
-    std::cerr << longest << std::endl;
+    std::vector<std::uint32_t> dst;
+    dst.reserve(length);
+    for (std::uint32_t i = 0, j = smallest[length]; i < length; ++i, j = predecessor[j]) {
+        dst.emplace_back(j);
+    }
+    std::reverse(dst.begin(), dst.end());
+
+    return dst;
 }
 
 std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
