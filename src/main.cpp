@@ -386,13 +386,7 @@ int main(int argc, char** argv) {
         ram::createMinimizers(read_minimizers, it->data.c_str(), end_read_size, id, 15, 5);
         ram::createMinimizers(read_minimizers, it->data.c_str() + (it->data.size() - (end_read_size+1)), end_read_size, id, 15, 5);
 
-        std::sort(read_minimizers.begin(), read_minimizers.end(), [](
-            const std::pair<std::uint64_t, std::uint32_t>& lhs,
-            const std::pair<std::uint64_t, std::uint32_t>& rhs) {
-                if (lhs.first < rhs.first) return true;
-                if (lhs.first == rhs.first) return lhs.second < rhs.second;
-                return false;
-            });
+        std::sort(read_minimizers.begin(), read_minimizers.end());
 
         auto matches = ram::map(read_minimizers, minimizers, hash);
         std::cout << "matches size " << matches.size() << std::endl;
