@@ -181,9 +181,13 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
                 std::uint32_t query_pos = (static_cast<std::uint32_t>(lhs[i].second) >> 1);
                 std::uint32_t target_pos = (static_cast<std::uint32_t>(rhs[j].second) >> 1);
 
-                std::uint32_t diagonal_diff = strand ? (1<<31) +(target_pos-query_pos) : target_pos+query_pos;
+                // std::uint32_t bounds = (1<<31);
+                // std::cout <<  bounds << std::endl;
+                std::uint32_t diagonal_diff = strand ? (100000 + target_pos - query_pos) : target_pos+query_pos;
 
-                std::uint64_t match_first = (((target_id << 1) | strand) << 32) | static_cast<std::uint64_t>(diagonal_diff);
+                // std::cout << "strand " << strand << std::endl;
+                // std::cout << "(target_id << 1) " << (target_id << 1) << std::endl;
+                std::uint64_t match_first = (((target_id << 1) | strand) << 32) | diagonal_diff;
                 std::uint64_t match_second = (static_cast<std::uint64_t>(target_pos) << 32) | static_cast<std::uint64_t>(query_pos);
 
                 // std::cout << match_first << " " << match_second << std::endl;

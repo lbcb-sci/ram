@@ -42,14 +42,6 @@ struct Sequence {
     std::string data;
 };
 
-std::uint64_t value_for_minimizer_location(std::uint64_t minimizer_location) {
-    return static_cast<std::uint64_t>((static_cast<std::uint32_t>(minimizer_location) >> 1));
-}
-
-std::uint32_t sequence_for_minimizer_location(std::uint64_t minimizer_location) {
-    return minimizer_location >> 32;
-}
-
 uint64_t get_complement_letter_value(char letter) {
     switch (letter) {
         case 'C': return 'G';
@@ -60,54 +52,63 @@ uint64_t get_complement_letter_value(char letter) {
     }
 }
 
-int get_ceil_index(std::vector<std::pair<std::uint64_t, std::uint64_t>> matches,
-    std::vector<std::uint64_t> &tail_indices,
-    std::uint64_t left, std::uint64_t right, std::uint64_t key) {
-    while (right - left > 1) {
-        int middle = left + (right - left)/2;
-        if (value_for_minimizer_location(matches[tail_indices[middle]].second) >= key) {
-            right = middle;
-        } else {
-            left = middle;
-        }
+void create_clusters(
+    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> &clusters,
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches,
+    std::vector<std::uint32_t> &matches_indexes) {
+
+    if (matches.size() <= 0) {
+        return;
     }
-    return right;
+
+    std::uint32_t start_ref = matches[0].second >> 32;
+    std::uint32_t len_ref = 0;
+    std::uint32_t start_read = (matches[0].second << 32) >> 32;
+    std::uint32_t len_read = 0;
+
+    auto previous_it = matches_indexes.begin();
+    auto current_it = previous_it + 1;
+
+    while(current_it != matches_indexes.end()) {
+        auto match = matches[*current_it];
+        auto previous_match = matches[*previous_it];
+
+        std::cout << (match.second >> 32) << " --- " << ((match.second << 32) >> 32) << std::endl;
+
+        // bool strand = (match.first & 1) == (match.second & 1);
+
+        std::uint64_t ref_len = (match.second >> 32) - (previous_match.second >> 32);
+        std::uint64_t read_len = ((match.second << 32) >> 32) -  ((previous_match.second << 32) >> 32);
+
+        if (ref_len > 1000) {
+            clusters.emplace_back(start_ref, len_ref+15, start_read, len_read+15);
+
+            start_ref = match.second >> 32;
+            start_read = (match.second << 32) >> 32;
+            len_ref = 0;
+            len_read = 0;
+        } else {
+            len_ref += ref_len;
+            len_read += read_len;
+        }
+
+        // std::cout << start_ref << " " << len_ref << " " << start_read << " " << len_read << std::endl;
+
+        current_it += 1;
+        previous_it += 1;
+    }
+
+    std::cout << "len_ref " << len_ref << std::endl;
+    if (len_ref > 0) {
+        clusters.emplace_back(start_ref, len_ref+15, start_read, len_read+15);
+    }
+
+    std::cout << "Number of clusters " << clusters.size() << std::endl;
+
+    return;
 }
 
-std::vector<std::pair<std::uint64_t, std::uint64_t>> find_lis_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches, std::uint32_t start, std::uint32_t end) {
-
-    std::vector<std::uint64_t> tail_indices(matches.size(), 0);
-    std::vector<std::uint64_t> prev_indices(matches.size(), -1);
-
-    std::uint64_t len = 1;
-    for (std::uint32_t i = start; i < end; i++) {
-        std::cout << i << " " << start << " " << end << std::endl;
-        if (value_for_minimizer_location(matches[i].second) > value_for_minimizer_location(matches[tail_indices[0]].second)) {
-            tail_indices[0] = i;
-        } else if (value_for_minimizer_location(matches[i].second) < value_for_minimizer_location(matches[tail_indices[len-1]].second)) {
-            prev_indices[i] = tail_indices[len-1];
-            tail_indices[len++] = i;
-        } else {
-            std::uint64_t pos = get_ceil_index(matches, tail_indices, -1, len-1, value_for_minimizer_location(matches[i].second));
-            prev_indices[i] = tail_indices[pos-1];
-            tail_indices[pos] = i;
-        }
-    }
-
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> best_matches;
-
-    // std::cout <<  "mid" << std::endl;
-
-    for (int i = tail_indices[len-1]; i >= 0; i = prev_indices[i]) {
-        // std::cout << i << " " << start << " " << end << std::endl;
-        best_matches.push_back(matches[i]);
-    }
-
-    std::cout <<  "kraj" << std::endl;
-    return best_matches;
-}
-
-std::bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> &clusters) {
+bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> &clusters) {
 
     auto start_it = clusters.begin();
 
@@ -130,30 +131,28 @@ std::bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint
     return min_query_pos < min_target_pos && max_query_pos < max_target_pos;
 }
 
-std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches) {
+bool find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &matches) {
 
     std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
 
     if (matches.size() <= 0) {
-        return clusters;
+        return false;
     }
 
-    std::sort(matches.begin(), matches.end(), [](
-        const std::pair<std::uint64_t, std::uint64_t>& lhs,
-        const std::pair<std::uint64_t, std::uint64_t>& rhs) {
-            if (lhs.first < rhs.first) return true;
-            if (lhs.first == rhs.first) return lhs.second < rhs.second;
-            return false;
-        });
+    std::sort(matches.begin(), matches.end());
 
-    std::cout << "Size of matches" << std::endl;
+    std::cout << "all matches" << std::endl;
+    for(auto &match : matches) {
+        // std::cout << match.first << " " << match.second << std::endl;
+        std::cout << (match.first >> 33) << ":  " << (match.first << 32 >> 32) << " " << (match.second >> 32)  << " " << (match.second << 32 >> 32) << " - " << (match.first >> 32 & 1) << std::endl;
+    }
 
     bool found_contained = false;
     auto start_it = matches.begin();
     auto previous_it = start_it;
-    auto current_it = previous_it += 1;
+    auto current_it = previous_it + 1;
 
-    while(current_it != matches.end()) {
+    while(current_it != matches.end() && !found_contained) {
         if ((previous_it->first >> 32) != (current_it->first >> 32)) {
             // std::cout << "----" << std::endl;
             // auto tmp_it = start_it;
@@ -162,12 +161,20 @@ std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_
             //     tmp_it += 1;
             // }
             // std::cout << "----" << std::endl;
-            auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
-            clusters.emplace_back(cluster);
+            auto matches_indexes = ram::longestIncreasingSubsequence(start_it, current_it);
+
+            std::cout << "lis matches" << std::endl;
+            for(auto &mi : matches_indexes) {
+                std::cout << mi << " - " << (matches[mi].first >> 33) << ":  " << (matches[mi].first << 32 >> 32) << "  " << (matches[mi].second >> 32) << "  " << (matches[mi].second << 32 >> 32) << " " << " - " << (matches[mi].first >> 32 & 1) << std::endl;
+            }
+
+            create_clusters(clusters, matches, matches_indexes);
+
+            // std::cout << "----xxxx" << std::endl;
 
             auto are_contained = are_clusters_contained(clusters);
             if (are_contained) {
-                return clusters;
+                return true;
             }
 
             clusters.empty();
@@ -181,8 +188,9 @@ std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_
             //     tmp_it += 1;
             // }
             // std::cout << "xxxx" << std::endl;
-            auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
-            clusters.emplace_back(cluster);
+            auto matches_indexes = ram::longestIncreasingSubsequence(start_it, current_it);
+            create_clusters(clusters, matches, matches_indexes);
+
             start_it = current_it;
         }
         previous_it = current_it;
@@ -199,15 +207,11 @@ std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_
 
     // std::cout << "gotovo" << std::endl;
 
-    auto cluster = ram::longestIncreasingSubsequence(start_it, current_it);
-    clusters.emplace_back(cluster);
+    auto matches_indexes = ram::longestIncreasingSubsequence(start_it, current_it);
+    create_clusters(clusters, matches, matches_indexes);
 
     auto are_contained = are_clusters_contained(clusters);
-    if (are_contained) {
-        return clusters;
-    }
-
-    return cluster;
+    return are_contained;
 }
 
 inline bool isSuffix(const std::string& src, const std::string& suffix) {
@@ -223,9 +227,6 @@ bool sortbylength(const std::unique_ptr<Sequence> &a,
 int main(int argc, char** argv) {
 
     std::vector<std::string> input_paths;
-
-    std::uint64_t kmer_length = 15;
-    std::uint64_t window_length = 5;
 
     char argument;
     while ((argument = getopt_long(argc, argv, "h", options, nullptr)) != -1) {
@@ -361,8 +362,6 @@ int main(int argc, char** argv) {
 
     logger.log("[ram::] found lis in");
 
-    return 0;
-
     uint32_t read_shorter_than_2000 = 0;
 
     id = 0;
@@ -393,7 +392,8 @@ int main(int argc, char** argv) {
         auto matches = ram::map(read_minimizers, minimizers, hash);
         std::cout << "matches size " << matches.size() << std::endl;
 
-        std::bool is_contained = find_best_matches(matches);
+        auto is_contained = find_best_matches(matches);
+        std::cout << "is contained: " << is_contained << std::endl;
 
         id += 1;
     }
