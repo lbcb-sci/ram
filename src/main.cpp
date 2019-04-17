@@ -103,7 +103,7 @@ void create_clusters(
         clusters.emplace_back(start_ref, len_ref+15, start_read, len_read+15);
     }
 
-    std::cout << "Number of clusters " << clusters.size() << std::endl;
+    // std::cout << "Number of clusters " << clusters.size() << std::endl;
 
     return;
 }
@@ -119,14 +119,16 @@ bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint32_t,
     std::uint32_t max_target_pos = 0;
 
     while (start_it != clusters.end()) {
-        min_query_pos = std::min(min_query_pos, std::get<0>(*start_it));
-        min_target_pos = std::min(min_target_pos, std::get<2>(*start_it));
+        min_query_pos = std::min(min_query_pos, std::get<2>(*start_it));
+        min_target_pos = std::min(min_target_pos, std::get<1>(*start_it));
 
-        max_query_pos = std::max(max_target_pos, std::get<0>(*start_it) + std::get<1>(*start_it));
-        max_target_pos = std::max(max_target_pos, std::get<2>(*start_it) + std::get<3>(*start_it));
+        max_query_pos = std::max(max_target_pos, std::get<2>(*start_it) + std::get<3>(*start_it));
+        max_target_pos = std::max(max_target_pos, std::get<0>(*start_it) + std::get<1>(*start_it));
 
         start_it += 1;
     }
+
+    std::cout << min_query_pos << " " << min_target_pos << " " << max_query_pos << " " << max_target_pos << std::endl;
 
     return min_query_pos < min_target_pos && max_query_pos < max_target_pos;
 }
@@ -173,6 +175,7 @@ bool find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &mat
             // std::cout << "----xxxx" << std::endl;
 
             auto are_contained = are_clusters_contained(clusters);
+            std::cout << "number of clusters " << clusters.size() << std::endl;
             if (are_contained) {
                 return true;
             }
@@ -209,6 +212,8 @@ bool find_best_matches(std::vector<std::pair<std::uint64_t, std::uint64_t>> &mat
 
     auto matches_indexes = ram::longestIncreasingSubsequence(start_it, current_it);
     create_clusters(clusters, matches, matches_indexes);
+
+    std::cout << "number of clusters " << clusters.size() << std::endl;
 
     auto are_contained = are_clusters_contained(clusters);
     return are_contained;
