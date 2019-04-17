@@ -357,7 +357,7 @@ int main(int argc, char** argv) {
     logger.log("[ram::] found occurences in");
     logger.log();
 
-    ram::longestIncreasingSubsequence(minimizers.begin(), minimizers.end());
+    auto indices = ram::longestIncreasingSubsequence(minimizers.begin(), minimizers.end());
 
     logger.log("[ram::] found lis in");
 
