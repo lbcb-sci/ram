@@ -422,7 +422,8 @@ int main(int argc, char** argv) {
     logger.log("[ram::] found occurences in");
     logger.log();
 
-    auto indices = ram::longestIncreasingSubsequence(minimizers.begin(), minimizers.end());
+    auto indices = ram::longestIncreasingSubsequence(minimizers.begin(),
+        minimizers.end(), std::less<std::uint64_t>());
 
     logger.log("[ram::] found lis in");
 
