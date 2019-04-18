@@ -68,6 +68,10 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
     std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash);
 
+bool is_read_contained(
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
+    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash);
 }
 
 struct Minimizer {
