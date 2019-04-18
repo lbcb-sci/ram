@@ -46,7 +46,7 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
         return;
     }
 
-    uint64_t mask = (1 << (k * 2)) - 1;
+    uint64_t mask = (1ULL << (k * 2)) - 1;
     uint64_t shift = (k - 1) * 2;
     uint64_t minimizer = 0, reverse_minimizer = 0;
 
@@ -65,7 +65,7 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
 
     std::uint64_t t = static_cast<std::uint64_t>(id) << 32;
 
-    for (std::uint32_t i = 0; i < sequence_length - k + 1; ++i) {
+    for (std::uint32_t i = 0; i < sequence_length; ++i) {
         std::uint64_t c = coder[sequence[i]];
         if (c == 255) {
             throw std::invalid_argument("[ram::createMinimizers] error: "
