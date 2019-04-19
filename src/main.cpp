@@ -191,17 +191,15 @@ int main(int argc, char** argv) {
     std::sort(counts.begin(), counts.end());
 
     std::cerr << "Hash size: " << hash.size() << std::endl;
+    std::cerr << "Counts size " << counts.size() << std::endl;
     std::cerr << counts[(1 - 0.001) * counts.size()] << std::endl;
 
     logger.log("[ram::] found occurences in");
     logger.log();
 
-    auto indices = ram::longestIncreasingSubsequence(minimizers.begin(),
-        minimizers.end(), std::less<std::uint64_t>());
-
-    logger.log("[ram::] found lis in");
-
     uint32_t read_shorter_than_2000 = 0;
+    uint32_t contained_number = 0;
+    uint32_t not_contained_number = 0;
 
     id = 0;
     for (const auto& it: contained_reads) {
@@ -213,20 +211,34 @@ int main(int argc, char** argv) {
         }
 
         std::vector<std::pair<uint64_t, uint64_t>> read_minimizers;
-
         std::uint32_t end_read_size = 1000;
 
+        if(id % 1000 == 0) {
+            std::cout << "N read " << id << std::endl;
+        }
+
         ram::createMinimizers(read_minimizers, it->data.c_str(), end_read_size, id, 15, 5);
-        ram::createMinimizers(read_minimizers, it->data.c_str() + (it->data.size() - (end_read_size+1)), end_read_size, id, 15, 5);
+        ram::createMinimizers(read_minimizers, it->data.c_str() + (it->data.size() - (end_read_size+1)), end_read_size, id+1, 15, 5);
+
+        std::uint32_t second_sequence_offset = it->data.size() - 2000;
 
         std::sort(read_minimizers.begin(), read_minimizers.end());
 
-        auto is_contained = ram::is_read_contained(read_minimizers, minimizers, hash);
-        std::cout << "Is contained: " << is_contained << std::endl;
+        auto is_contained = ram::is_read_contained(read_minimizers, minimizers, hash, second_sequence_offset, id);
+
+        if (is_contained) {
+            contained_number += 1;
+        } else {
+            not_contained_number += 1;
+        }
         id += 1;
     }
 
+    std::cout << "Contained reads: " << contained_number << std::endl;
+    std::cout << "Not contained reads: " << not_contained_number << std::endl;
     std::cout << "reads shorter than 2000 " << read_shorter_than_2000 << std::endl;
+
+    logger.log("[ram::] mapped in");
 
     return 0;
 }
