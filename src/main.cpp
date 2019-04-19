@@ -42,27 +42,17 @@ struct Sequence {
     std::string data;
 };
 
-uint64_t get_complement_letter_value(char letter) {
-    switch (letter) {
-        case 'C': return 'G';
-        case 'A': return 'T';
-        case 'T': return 'A';
-        case 'G': return 'C';
-        default: return  0;
-    }
-}
-
 inline bool isSuffix(const std::string& src, const std::string& suffix) {
     return src.size() < suffix.size() ? false :
         src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-bool sortbylength(const std::unique_ptr<Sequence> &a,
-              const std::unique_ptr<Sequence> &b) {
-                  return a->data.size() < b->data.size();
-}
-
 int main(int argc, char** argv) {
+
+    std::uint32_t l = 1000;
+    std::uint32_t k = 15;
+    std::uint32_t w = 5;
+    double f = 0.001;
 
     std::vector<std::string> input_paths;
 
@@ -134,33 +124,35 @@ int main(int argc, char** argv) {
 
     std::unordered_map<uint64_t, std::vector<uint64_t>> minimizer_hash;
 
-    sort(contained_reads.begin(), contained_reads.end(), sortbylength);
+    sort(containee_reads.begin(), containee_reads.end(),
+        [](const std::unique_ptr<Sequence>& lhs,
+           const std::unique_ptr<Sequence>& rhs) {
+            return lhs->data.size() < rhs->data.size();
+        }
+    );
+    sort(contained_reads.begin(), contained_reads.end(),
+        [](const std::unique_ptr<Sequence>& lhs,
+           const std::unique_ptr<Sequence>& rhs) {
+            return lhs->data.size() < rhs->data.size();
+        }
+    );
 
     uint32_t id = 0;
     std::vector<std::pair<uint64_t, uint64_t>> minimizers;
-    for (const auto& it: contained_reads) {
-        ram::createMinimizers(minimizers, it->data.c_str(), it->data.size(), id, 15, 5);
-        ++id;
+    for (const auto& it: containee_reads) {
+        ram::createMinimizers(minimizers, it->data.c_str(), it->data.size(),
+            id++, k, w);
     }
 
-    std::cerr << minimizers.size() << std::endl;
+    std::cerr << "Number of minimizers: " << minimizers.size() << std::endl;
 
     logger.log("[ram::] collected minimizers in");
     logger.log();
 
-    ram::sortMinimizers(minimizers, 15);
+    ram::sortMinimizers(minimizers, k);
 
     logger.log("[ram::] sorted minimizers in");
     logger.log();
-
-    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
-        if (i != 0 && minimizers[i].first == minimizers[i-1].first &&
-            minimizers[i].second < minimizers[i - 1].second) {
-            // std::cerr << minimizers[i].first << " " << (minimizers[i].second >> 32) << " " << (static_cast<std::uint32_t>(minimizers[i].second) >> 1) << " " << (minimizers[i].second & 1) << std::endl;
-            // std::cerr << minimizers[i - 1].first << " " << (minimizers[i - 1].second >> 32) << " " << (static_cast<std::uint32_t>(minimizers[i - 1].second) >> 1) << " " << (minimizers[i - 1].second & 1) << std::endl;
-            //throw std::logic_error("minimizers");
-        }
-    }
 
     std::uint32_t num_minimizers = 0;
     for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
@@ -189,56 +181,47 @@ int main(int argc, char** argv) {
     logger.log();
 
     std::sort(counts.begin(), counts.end());
+    std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
 
     std::cerr << "Hash size: " << hash.size() << std::endl;
     std::cerr << "Counts size " << counts.size() << std::endl;
-    std::cerr << counts[(1 - 0.001) * counts.size()] << std::endl;
+    std::cerr << "Max occurence " << max_occurence << std::endl;
 
     logger.log("[ram::] found occurences in");
     logger.log();
 
-    uint32_t read_shorter_than_2000 = 0;
-    uint32_t contained_number = 0;
-    uint32_t not_contained_number = 0;
+    uint32_t num_short_reads = 0;
+    uint32_t num_contained = 0;
 
     id = 0;
     for (const auto& it: contained_reads) {
 
-        if (it->data.size() <= 2000) {
-            read_shorter_than_2000 += 1;
-            id += 1;
+        if (it->data.size() <= 2 * l) {
+            ++num_short_reads;
+            ++id;
             continue;
         }
 
         std::vector<std::pair<uint64_t, uint64_t>> read_minimizers;
-        std::uint32_t end_read_size = 1000;
 
-        if(id % 1000 == 0) {
-            std::cout << "N read " << id << std::endl;
-        }
-
-        ram::createMinimizers(read_minimizers, it->data.c_str(), end_read_size, id, 15, 5);
-        ram::createMinimizers(read_minimizers, it->data.c_str() + (it->data.size() - (end_read_size+1)), end_read_size, id+1, 15, 5);
-
-        std::uint32_t second_sequence_offset = it->data.size() - 2000;
+        ram::createMinimizers(read_minimizers, it->data.c_str(), l, id, k, w);
+        ram::createMinimizers(read_minimizers, it->data.c_str() +
+            (it->data.size() - l - 1), l, id + 1, k, w);
 
         std::sort(read_minimizers.begin(), read_minimizers.end());
 
-        auto is_contained = ram::is_read_contained(read_minimizers, minimizers, hash, second_sequence_offset, id);
+        num_contained += ram::is_read_contained(read_minimizers, minimizers,
+            hash, it->data.size() - 2 * l, id, max_occurence);
 
-        if (is_contained) {
-            contained_number += 1;
-        } else {
-            not_contained_number += 1;
-        }
-        id += 1;
+        ++id;
     }
 
-    std::cout << "Contained reads: " << contained_number << std::endl;
-    std::cout << "Not contained reads: " << not_contained_number << std::endl;
-    std::cout << "reads shorter than 2000 " << read_shorter_than_2000 << std::endl;
+    std::cout << "Number of reads: " << contained_reads.size() << std::endl;
+    std::cout << "Number of short reads: " << num_short_reads << std::endl;
+    std::cout << "Number of contained reads: " << num_contained << std::endl;
 
     logger.log("[ram::] mapped in");
+    logger.total("[ram::] total time");
 
     return 0;
 }

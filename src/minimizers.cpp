@@ -196,63 +196,63 @@ bool are_clusters_contained(std::vector<std::tuple<std::uint32_t, std::uint32_t,
 }
 
 std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
-    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash,
-    std::uint32_t second_sequence_offset,
-    uint32_t id) {
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
+    std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+    std::uint32_t second_sequence_offset, std::uint32_t id,
+    std::uint32_t max_occurence) {
 
     std::vector<std::pair<std::uint64_t, std::uint64_t>> matches;
 
-    for (std::uint32_t i = 0; i < lhs.size(); i++) {
+    for (std::uint32_t i = 0; i < query.size(); i++) {
 
-        auto value = hash.find(lhs[i].first);
-        if (value != hash.end()) {
-            auto range = value->second;
-            // hardkodiran filter minimizera
-            if (range.second > 22) {
+        const auto it = target_hash.find(query[i].first);
+        if (it != target_hash.end()) {
+            const auto& range = it->second;
+            if (false && range.second >= max_occurence) {
                 continue;
             }
             for (std::uint32_t j = range.first; j < range.first + range.second; j++) {
-                std::uint32_t strand = (lhs[i].second & 1) == (rhs[j].second & 1);
-                std::uint64_t query_id = lhs[i].second >> 32;
-                std::uint64_t target_id = rhs[j].second >> 32;
+                std::uint64_t strand = (query[i].second & 1) == (target[j].second & 1);
 
-                std::uint32_t query_pos = (static_cast<std::uint32_t>(lhs[i].second) >> 1);
+                std::uint64_t query_id = query[i].second >> 32;
+                std::uint64_t query_pos = query[i].second << 32 >> 33;
 
                 if (id + 1 == query_id) {
                     query_pos += second_sequence_offset;
                     query_id -= 1;
                 }
 
-                if (query_id >= target_id) {
-                    continue;
-                }
+                std::uint64_t target_id = target[j].second >> 32;
+                std::uint64_t target_pos = target[j].second << 32 >> 33;
 
-                std::uint32_t target_pos = (static_cast<std::uint32_t>(rhs[j].second) >> 1);
+                // fix to check lenghts or do nothing, idk
+                //if (query_id >= target_id) {
+                //    continue;
+                //}
 
-                std::uint32_t diagonal_diff = strand ? (100000 + target_pos - query_pos) : target_pos+query_pos;
+                std::uint64_t diagonal_diff = !strand ? target_pos + query_pos :
+                    (1ULL << 31) + target_pos - query_pos;
 
-                std::uint64_t match_first = (((target_id << 1) | strand) << 32) | diagonal_diff;
-                std::uint64_t match_second = (static_cast<std::uint64_t>(target_pos) << 32) |
-                    static_cast<std::uint64_t>(query_pos);
-
-                matches.emplace_back(match_first, match_second);
+                matches.emplace_back(
+                    (((target_id << 1) | strand) << 32) | diagonal_diff,
+                    (target_pos << 32) | query_pos);
             }
         }
     }
+
     return matches;
 }
 
 bool is_read_contained(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
-    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash,
-    std::uint32_t second_sequence_offset,
-    uint32_t id) {
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
+    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& target_hash,
+    std::uint32_t second_sequence_offset, std::uint32_t id,
+    std::uint32_t max_occurence) {
 
-    auto matches = ram::map(lhs, rhs, hash, second_sequence_offset, id);
-    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
+    auto matches = ram::map(query, target, target_hash, second_sequence_offset,
+        id, max_occurence);
 
     if (matches.size() <= 0) {
         return false;
@@ -260,82 +260,46 @@ bool is_read_contained(
 
     std::sort(matches.begin(), matches.end());
 
-    bool found_contained = false;
-    auto start_it = matches.begin();
-    auto previous_it = start_it;
-    auto current_it = previous_it + 1;
+    auto op_less = std::less<std::uint64_t>();
+    auto op_greater = std::greater<std::uint64_t>();
 
-    while(current_it != matches.end() && !found_contained) {
-        if ((previous_it->first >> 32) != (current_it->first >> 32)) {
-            if(((previous_it->first >> 32) & 1)) {
+    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
 
-                std::sort(start_it, current_it, [](
-                        const std::pair<std::uint64_t, std::uint64_t>& lhs,
-                        const std::pair<std::uint64_t, std::uint64_t>& rhs) {
-                            return lhs.second < rhs.second;
-                        });
+    for (unsigned i = 1, j = 0; i < matches.size(); ++i) {
+        if ((matches[i].first >> 32) != matches[i - 1].first >> 32 ||
+            (matches[i].first << 32 >> 32) - (matches[i - 1].first << 32 >> 32) > 500 ||
+            i == matches.size() - 1) {
 
-                auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::less<std::uint64_t>());
-                create_clusters(clusters, indices, start_it);
+            std::sort(matches.begin() + j, matches.begin() + i,
+                [](const std::pair<std::uint64_t, std::uint64_t>& lhs,
+                   const std::pair<std::uint64_t, std::uint64_t>& rhs) {
+                    return lhs.second < rhs.second;
+                }
+            );
+
+            std::vector<std::uint32_t> indices;
+            if ((matches[i - 1].first >> 32) & 1) {
+                indices = ram::longestSubsequence(matches.begin() + j,
+                    matches.begin() + i, op_less);
             } else {
-
-                std::sort(start_it, current_it, [](
-                        const std::pair<std::uint64_t, std::uint64_t>& lhs,
-                        const std::pair<std::uint64_t, std::uint64_t>& rhs) {
-                            return lhs.second < rhs.second;
-                        });
-
-                auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::greater<std::uint64_t>());
-                create_clusters(clusters, indices, start_it);
+                indices = ram::longestSubsequence(matches.begin() + j,
+                    matches.begin() + i, op_greater);
             }
 
-            auto are_contained = are_clusters_contained(clusters);
+            create_clusters(clusters, indices, matches.begin() + j);
 
-            if (are_contained) {
-                return true;
+            if ((matches[i].first >> 32) != matches[i - 1].first >> 32) {
+                if (are_clusters_contained(clusters)) {
+                    return true;
+                }
+                clusters.clear();
             }
 
-            clusters.clear();
-
-            start_it = current_it;
-        } else if ((((current_it->first << 32) >> 32) - ((previous_it->first << 32) >> 32)) > 100) {
-            if(((previous_it->first >> 32) & 1)) {
-                std::sort(start_it, current_it, [](
-                        const std::pair<std::uint64_t, std::uint64_t>& lhs,
-                        const std::pair<std::uint64_t, std::uint64_t>& rhs) {
-                            return lhs.second < rhs.second;
-                        });
-                auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::less<std::uint64_t>());
-                create_clusters(clusters, indices, start_it);
-            } else {
-                std::sort(start_it, current_it, [](
-                        const std::pair<std::uint64_t, std::uint64_t>& lhs,
-                        const std::pair<std::uint64_t, std::uint64_t>& rhs) {
-                            return lhs.second < rhs.second;
-                        });
-                auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::greater<std::uint64_t>());
-                create_clusters(clusters, indices, start_it);
-            }
-
-            start_it = current_it;
-        }
-        previous_it = current_it;
-        current_it += 1;
-    }
-
-
-    if (start_it != current_it) {
-        if(((previous_it->first >> 32) & 1)) {
-            auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::less<std::uint64_t>());
-            create_clusters(clusters, indices, start_it);
-        } else {
-            auto indices = ram::longestIncreasingSubsequence(start_it, current_it, std::greater<std::uint64_t>());
-            create_clusters(clusters, indices, start_it);
+            j = i;
         }
     }
 
-    auto are_contained = are_clusters_contained(clusters);
-    return are_contained;
+    return false;
 }
 
 }

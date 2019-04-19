@@ -15,6 +15,10 @@
 
 namespace ram {
 
+// [127: 64] := minimizer
+// [ 63: 32] := identifier
+// [ 31:  1] := position
+// [  0:  0] := strand
 void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
     const char* sequence, std::uint32_t sequence_length, std::uint32_t id,
     std::uint32_t k, std::uint32_t w);
@@ -23,13 +27,13 @@ void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     std::uint32_t k);
 
 template<typename Operator>
-inline std::vector<std::uint32_t> longestIncreasingSubsequence(
+inline std::vector<std::uint32_t> longestSubsequence(
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator begin,
     std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator end,
-    Operator op) {
+    const Operator& op) {
 
-    if (begin == end) {
-        throw std::invalid_argument("[ram::longestIncreasingSubsequence] error: "
+    if (begin >= end) {
+        throw std::invalid_argument("[ram::longestSubsequence] error: "
             "empty match set");
     }
 
@@ -63,19 +67,24 @@ inline std::vector<std::uint32_t> longestIncreasingSubsequence(
     return dst;
 }
 
+// [127: 97] := identifier
+// [ 96: 96] := relative strand
+// [ 95: 64] := diagonal identifier
+// [ 63: 32] := target position
+// [ 31:  0] := query position
 std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
-    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash,
-    std::uint32_t second_sequence_offset,
-    uint32_t id);
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
+    const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+    std::uint32_t second_sequence_offset, std::uint32_t id,
+    std::uint32_t max_occurence);
 
-    bool is_read_contained(
-        const std::vector<std::pair<std::uint64_t, std::uint64_t>>& lhs,
-        const std::vector<std::pair<std::uint64_t, std::uint64_t>>& rhs,
-        std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& hash,
-        std::uint32_t second_sequence_offset,
-        uint32_t id);
+bool is_read_contained(
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
+    std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+    std::uint32_t second_sequence_offset, std::uint32_t id,
+    std::uint32_t max_occurence);
 
 }
 
