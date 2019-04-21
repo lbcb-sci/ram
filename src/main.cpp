@@ -47,9 +47,34 @@ inline bool isSuffix(const std::string& src, const std::string& suffix) {
         src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+template<typename T>
+void shrinkToFit(std::vector<T>& src, uint64_t begin) {
+
+    uint64_t i = begin;
+    for (uint64_t j = begin; i < src.size(); ++i) {
+        if (src[i] != nullptr) {
+            continue;
+        }
+
+        j = std::max(j, i);
+        while (j < src.size() && src[j] == nullptr) {
+            ++j;
+        }
+
+        if (j >= src.size()) {
+            break;
+        } else if (i != j) {
+            std::swap(src[i], src[j]);
+        }
+    }
+    if (i < src.size()) {
+        src.resize(i);
+    }
+}
+
 int main(int argc, char** argv) {
 
-    std::uint32_t l = 1000;
+    std::uint32_t e = 1000;
     std::uint32_t k = 15;
     std::uint32_t w = 5;
     double f = 0.001;
@@ -93,134 +118,150 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::unique_ptr<bioparser::Parser<Sequence>> tparser = nullptr;
+    std::vector<std::unique_ptr<bioparser::Parser<Sequence>>> tparsers;
 
     if (input_paths.size() > 1) {
-        if (isSuffix(input_paths[1], ".fasta") || isSuffix(input_paths[1], ".fa") ||
-            isSuffix(input_paths[1], ".fasta.gz") || isSuffix(input_paths[1], ".fa.gz")) {
-            tparser = bioparser::createParser<bioparser::FastaParser, Sequence>(
-                input_paths[1]);
-        } else if (isSuffix(input_paths[1], ".fastq") || isSuffix(input_paths[1], ".fq") ||
-                   isSuffix(input_paths[1], ".fastq.gz") || isSuffix(input_paths[1], ".fq.gz")) {
-            tparser = bioparser::createParser<bioparser::FastqParser, Sequence>(
-                input_paths[1]);
-        } else {
-            std::cerr << "[ram::] error: file " << input_paths[1] <<
-                " has unsupported format extension (valid extensions: .fasta, "
-                ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
-            std::endl;
-            return 1;
+        for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
+            if (isSuffix(input_paths[i], ".fasta") || isSuffix(input_paths[i], ".fa") ||
+                isSuffix(input_paths[i], ".fasta.gz") || isSuffix(input_paths[i], ".fa.gz")) {
+                tparsers.emplace_back(bioparser::createParser<bioparser::FastaParser, Sequence>(
+                    input_paths[i]));
+            } else if (isSuffix(input_paths[i], ".fastq") || isSuffix(input_paths[i], ".fq") ||
+                       isSuffix(input_paths[i], ".fastq.gz") || isSuffix(input_paths[i], ".fq.gz")) {
+                tparsers.emplace_back(bioparser::createParser<bioparser::FastqParser, Sequence>(
+                    input_paths[i]));
+            } else {
+                std::cerr << "[ram::] error: file " << input_paths[i] <<
+                    " has unsupported format extension (valid extensions: .fasta, "
+                    ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
+                std::endl;
+                return 1;
+            }
         }
     }
-
-    std::vector<std::unique_ptr<Sequence>> containee_reads;
-    sparser->parse(containee_reads, -1);
-
-    std::vector<std::unique_ptr<Sequence>> contained_reads;
-    tparser->parse(contained_reads, -1);
 
     auto logger = logger::Logger();
-    logger.log();
 
-    std::unordered_map<uint64_t, std::vector<uint64_t>> minimizer_hash;
+    std::vector<std::unique_ptr<Sequence>> sequences;
+    while (true) {
+        logger.log();
 
-    sort(containee_reads.begin(), containee_reads.end(),
-        [](const std::unique_ptr<Sequence>& lhs,
-           const std::unique_ptr<Sequence>& rhs) {
-            return lhs->data.size() < rhs->data.size();
+        std::uint32_t l = sequences.size();
+        bool status = sparser->parse(sequences, 256 * 1024 * 1024);
+
+        std::cerr << "Num sequences: " << sequences.size() - l << std::endl;
+
+        logger.log("[ram::] parsed sequences in ");
+        logger.log();
+
+        std::sort(sequences.begin() + l, sequences.end(),
+            [] (const std::unique_ptr<Sequence>& lhs,
+                const std::unique_ptr<Sequence>& rhs) {
+                return lhs->data.size() < rhs->data.size();
+            }
+        );
+
+        uint32_t id = 0;
+        std::vector<std::pair<uint64_t, uint64_t>> minimizers;
+        for (std::uint32_t i = l; i < sequences.size(); ++i) {
+            ram::createMinimizers(minimizers, sequences[i]->data.c_str(),
+                sequences[i]->data.size(), id++, k, w);
         }
-    );
-    sort(contained_reads.begin(), contained_reads.end(),
-        [](const std::unique_ptr<Sequence>& lhs,
-           const std::unique_ptr<Sequence>& rhs) {
-            return lhs->data.size() < rhs->data.size();
+
+        std::cerr << "Num minimizers: " << minimizers.size() << std::endl;
+
+        logger.log("[ram::] collected minimizers in");
+        logger.log();
+
+        ram::sortMinimizers(minimizers, k);
+
+        logger.log("[ram::] sorted minimizers in");
+        logger.log();
+
+        std::uint32_t num_minimizers = 0;
+        for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+            if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+                ++num_minimizers;
+            }
         }
-    );
 
-    uint32_t id = 0;
-    std::vector<std::pair<uint64_t, uint64_t>> minimizers;
-    for (const auto& it: containee_reads) {
-        ram::createMinimizers(minimizers, it->data.c_str(), it->data.size(),
-            id++, k, w);
-    }
+        std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> hash;
+        hash.reserve(num_minimizers);
 
-    std::cerr << "Number of minimizers: " << minimizers.size() << std::endl;
+        std::vector<std::uint32_t> counts;
+        counts.reserve(num_minimizers);
 
-    logger.log("[ram::] collected minimizers in");
-    logger.log();
-
-    ram::sortMinimizers(minimizers, k);
-
-    logger.log("[ram::] sorted minimizers in");
-    logger.log();
-
-    std::uint32_t num_minimizers = 0;
-    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
-        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
-            ++num_minimizers;
+        std::uint32_t count = 0;
+        for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+            if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+                hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
+                counts.emplace_back(count);
+                count = 0;
+            }
+            ++count;
         }
-    }
 
-    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> hash;
-    hash.reserve(num_minimizers);
+        logger.log("[ram::] created hash in");
+        logger.log();
 
-    std::vector<std::uint32_t> counts;
-    counts.reserve(num_minimizers);
+        std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
+            counts.end());
+        std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
 
-    std::uint32_t count = 0;
-    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
-        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
-            hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
-            counts.emplace_back(count);
-            count = 0;
+        std::cerr << "Hash size: " << hash.size() << std::endl;
+        std::cerr << "Counts size: " << counts.size() << std::endl;
+        std::cerr << "Max occurence: " << max_occurence << std::endl;
+
+        logger.log("[ram::] found occurences in");
+        logger.log();
+
+        uint32_t num_contained = 0;
+
+        id = 0;
+
+        std::vector<std::uint32_t> sequence_lengths(sequences.size() - l);
+        for (std::uint32_t i = l; i < sequences.size(); ++i) {
+            sequence_lengths[i - l] = sequences[i]->data.size();
         }
-        ++count;
-    }
 
-    logger.log("[ram::] created hash in");
-    logger.log();
+        for (std::uint32_t i = l; i < sequences.size(); ++i) {
 
-    std::sort(counts.begin(), counts.end());
-    std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
+            std::vector<std::pair<uint64_t, uint64_t>> sequence_minimizers;
+            if (sequences[i]->data.size() <= 2 * e) {
+                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
+                    sequences[i]->data.size(), id, k, w);
+            } else {
+                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
+                    e, id, k, w);
+                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
+                    sequences[i]->data.size() - e, e, id + 1, k, w);
+            }
 
-    std::cerr << "Hash size: " << hash.size() << std::endl;
-    std::cerr << "Counts size " << counts.size() << std::endl;
-    std::cerr << "Max occurence " << max_occurence << std::endl;
+            std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
 
-    logger.log("[ram::] found occurences in");
-    logger.log();
+            bool ic = ram::is_contained(sequence_minimizers, minimizers,
+                hash, id, sequences[i]->data.size() - e, max_occurence,
+                sequence_lengths);
 
-    uint32_t num_short_reads = 0;
-    uint32_t num_contained = 0;
+            if (ic) {
+                sequences[i].reset();
+                ++num_contained;
+            }
 
-    id = 0;
-    for (const auto& it: contained_reads) {
-
-        if (it->data.size() <= 2 * l) {
-            ++num_short_reads;
             ++id;
-            continue;
         }
 
-        std::vector<std::pair<uint64_t, uint64_t>> read_minimizers;
+        shrinkToFit(sequences, l);
 
-        ram::createMinimizers(read_minimizers, it->data.c_str(), l, id, k, w);
-        ram::createMinimizers(read_minimizers, it->data.c_str() +
-            (it->data.size() - l - 1), l, id + 1, k, w);
+        std::cerr << "Num contained reads: " << num_contained << std::endl;
+        logger.log("[ram::] mapped in");
 
-        std::sort(read_minimizers.begin(), read_minimizers.end());
-
-        num_contained += ram::is_read_contained(read_minimizers, minimizers,
-            hash, it->data.size() - 2 * l, id, max_occurence);
-
-        ++id;
+        if (!status) {
+            break;
+        }
     }
 
-    std::cout << "Number of reads: " << contained_reads.size() << std::endl;
-    std::cout << "Number of short reads: " << num_short_reads << std::endl;
-    std::cout << "Number of contained reads: " << num_contained << std::endl;
-
-    logger.log("[ram::] mapped in");
+    std::cerr << "Num suriving reads: " << sequences.size() << std::endl;
     logger.total("[ram::] total time");
 
     return 0;
@@ -228,14 +269,11 @@ int main(int argc, char** argv) {
 
 void help() {
     std::cout <<
-        "usage: ram [options ...] <sequences> [<target sequences>]\n"
+        "usage: ram [options ...] <sequences> [<sequences> ...]\n"
         "\n"
         "    <sequences>\n"
         "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
         "        containing sequences\n"
-        "    <target sequences>\n"
-        "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
-        "        containing target sequences\n"
         "\n"
         "    options:\n"
         "        --version\n"

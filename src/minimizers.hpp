@@ -76,15 +76,14 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
     const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
-    std::uint32_t second_sequence_offset, std::uint32_t id,
-    std::uint32_t max_occurence);
+    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence);
 
-bool is_read_contained(
+bool is_contained(
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
-    std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
-    std::uint32_t second_sequence_offset, std::uint32_t id,
-    std::uint32_t max_occurence);
+    const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
+    const std::vector<std::uint32_t>& sequence_lengths);
 
 }
 
