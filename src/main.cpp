@@ -38,6 +38,7 @@ struct Sequence {
     ~Sequence() {
     }
 
+
     std::string name;
     std::string data;
 };
@@ -70,6 +71,115 @@ void shrinkToFit(std::vector<T>& src, uint64_t begin) {
     if (i < src.size()) {
         src.resize(i);
     }
+}
+
+void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
+    std::uint32_t b, std::uint32_t e, std::uint32_t k, std::uint32_t w,
+    double f) {
+
+    logger::Logger logger;
+    logger.log();
+
+    std::sort(sequences.begin() + b, sequences.end(),
+        [] (const std::unique_ptr<Sequence>& lhs,
+            const std::unique_ptr<Sequence>& rhs) {
+            return lhs->data.size() < rhs->data.size();
+        }
+    );
+
+    uint32_t id = 0;
+    std::vector<std::pair<uint64_t, uint64_t>> minimizers;
+    for (std::uint32_t i = b; i < sequences.size(); ++i) {
+        ram::createMinimizers(minimizers, sequences[i]->data.c_str(),
+            sequences[i]->data.size(), id++, k, w);
+    }
+
+    std::cerr << "Num minimizers: " << minimizers.size() << std::endl;
+
+    logger.log("[ram::] collected minimizers in");
+    logger.log();
+
+    ram::sortMinimizers(minimizers, k);
+
+    logger.log("[ram::] sorted minimizers in");
+    logger.log();
+
+    std::uint32_t num_minimizers = 0;
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+            ++num_minimizers;
+        }
+    }
+
+    std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> hash;
+    hash.reserve(num_minimizers);
+
+    std::vector<std::uint32_t> counts;
+    counts.reserve(num_minimizers);
+
+    std::uint32_t count = 0;
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
+            hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
+            counts.emplace_back(count);
+            count = 0;
+        }
+        ++count;
+    }
+
+    logger.log("[ram::] created hash in");
+    logger.log();
+
+    std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
+        counts.end());
+    std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
+
+    std::cerr << "Hash size: " << hash.size() << std::endl;
+    std::cerr << "Counts size: " << counts.size() << std::endl;
+    std::cerr << "Max occurence: " << max_occurence << std::endl;
+
+    logger.log("[ram::] found occurences in");
+    logger.log();
+
+    uint32_t num_contained = 0;
+    id = 0;
+
+    std::vector<std::uint32_t> sequence_lengths(sequences.size() - b);
+    for (std::uint32_t i = b; i < sequences.size(); ++i) {
+        sequence_lengths[i - b] = sequences[i]->data.size();
+    }
+
+    for (std::uint32_t i = b; i < sequences.size(); ++i) {
+
+        std::vector<std::pair<uint64_t, uint64_t>> sequence_minimizers;
+        if (sequences[i]->data.size() <= 2 * e) {
+            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
+                sequences[i]->data.size(), id, k, w);
+        } else {
+            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
+                e, id, k, w);
+            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
+                sequences[i]->data.size() - e, e, id + 1, k, w);
+        }
+
+        std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
+
+        bool ic = ram::is_contained(sequence_minimizers, minimizers,
+            hash, id, sequences[i]->data.size() - e, max_occurence,
+            sequence_lengths);
+
+        if (ic) {
+            sequences[i].reset();
+            ++num_contained;
+        }
+
+        ++id;
+    }
+
+    shrinkToFit(sequences, b);
+
+    std::cerr << "Num contained reads: " << num_contained << std::endl;
+    logger.log("[ram::] mapped in");
 }
 
 int main(int argc, char** argv) {
@@ -143,7 +253,10 @@ int main(int argc, char** argv) {
     auto logger = logger::Logger();
 
     std::vector<std::unique_ptr<Sequence>> sequences;
+    std::uint32_t num_chunks = 0;
     while (true) {
+        ++num_chunks;
+
         logger.log();
 
         std::uint32_t l = sequences.size();
@@ -152,109 +265,17 @@ int main(int argc, char** argv) {
         std::cerr << "Num sequences: " << sequences.size() - l << std::endl;
 
         logger.log("[ram::] parsed sequences in ");
-        logger.log();
 
-        std::sort(sequences.begin() + l, sequences.end(),
-            [] (const std::unique_ptr<Sequence>& lhs,
-                const std::unique_ptr<Sequence>& rhs) {
-                return lhs->data.size() < rhs->data.size();
-            }
-        );
+        removeContained(sequences, l, e, k, w, f);
 
-        uint32_t id = 0;
-        std::vector<std::pair<uint64_t, uint64_t>> minimizers;
-        for (std::uint32_t i = l; i < sequences.size(); ++i) {
-            ram::createMinimizers(minimizers, sequences[i]->data.c_str(),
-                sequences[i]->data.size(), id++, k, w);
+        std::uint64_t remaining_size = 0;
+        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
+            remaining_size += sequences[i]->data.size();
         }
 
-        std::cerr << "Num minimizers: " << minimizers.size() << std::endl;
-
-        logger.log("[ram::] collected minimizers in");
-        logger.log();
-
-        ram::sortMinimizers(minimizers, k);
-
-        logger.log("[ram::] sorted minimizers in");
-        logger.log();
-
-        std::uint32_t num_minimizers = 0;
-        for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
-            if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
-                ++num_minimizers;
-            }
+        if (remaining_size > 256 * 1024 * 1024 || (!status && num_chunks > 1)) {
+            removeContained(sequences, 0, e, k, w, f);
         }
-
-        std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>> hash;
-        hash.reserve(num_minimizers);
-
-        std::vector<std::uint32_t> counts;
-        counts.reserve(num_minimizers);
-
-        std::uint32_t count = 0;
-        for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
-            if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
-                hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
-                counts.emplace_back(count);
-                count = 0;
-            }
-            ++count;
-        }
-
-        logger.log("[ram::] created hash in");
-        logger.log();
-
-        std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
-            counts.end());
-        std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
-
-        std::cerr << "Hash size: " << hash.size() << std::endl;
-        std::cerr << "Counts size: " << counts.size() << std::endl;
-        std::cerr << "Max occurence: " << max_occurence << std::endl;
-
-        logger.log("[ram::] found occurences in");
-        logger.log();
-
-        uint32_t num_contained = 0;
-
-        id = 0;
-
-        std::vector<std::uint32_t> sequence_lengths(sequences.size() - l);
-        for (std::uint32_t i = l; i < sequences.size(); ++i) {
-            sequence_lengths[i - l] = sequences[i]->data.size();
-        }
-
-        for (std::uint32_t i = l; i < sequences.size(); ++i) {
-
-            std::vector<std::pair<uint64_t, uint64_t>> sequence_minimizers;
-            if (sequences[i]->data.size() <= 2 * e) {
-                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                    sequences[i]->data.size(), id, k, w);
-            } else {
-                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                    e, id, k, w);
-                ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
-                    sequences[i]->data.size() - e, e, id + 1, k, w);
-            }
-
-            std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
-
-            bool ic = ram::is_contained(sequence_minimizers, minimizers,
-                hash, id, sequences[i]->data.size() - e, max_occurence,
-                sequence_lengths);
-
-            if (ic) {
-                sequences[i].reset();
-                ++num_contained;
-            }
-
-            ++id;
-        }
-
-        shrinkToFit(sequences, l);
-
-        std::cerr << "Num contained reads: " << num_contained << std::endl;
-        logger.log("[ram::] mapped in");
 
         if (!status) {
             break;
