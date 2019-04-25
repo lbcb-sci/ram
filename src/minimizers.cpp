@@ -148,8 +148,8 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
                 std::uint64_t target_pos = target[j].second << 32 >> 33;
 
                 // TODO: take minimizers from first/last non-singleton minimizer!
-                if (query_id >= target_id) {
-                    continue;
+                if (query_id <= target_id) {
+                    break;
                 }
 
                 std::uint64_t diagonal_diff = !strand ? target_pos + query_pos :
@@ -183,21 +183,9 @@ bool is_contained(
     auto op_less = std::less<std::uint64_t>();
     auto op_greater = std::greater<std::uint64_t>();
 
-    std::vector<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>> clusters;
-
-    std::uint64_t target_begin = -1;
-    std::uint64_t target_end = 0;
-    std::uint64_t query_begin = -1;
-    std::uint64_t query_end = 0;
-
-    bool cc = false;
     for (unsigned i = 1, j = 0; i < matches.size(); ++i) {
-        if ((cc = (matches[i].first >> 32) != matches[i - 1].first >> 32 || i == matches.size() - 1) ||
+        if ((matches[i].first >> 32) != (matches[i - 1].first >> 32) ||
             (matches[i].first << 32 >> 32) - (matches[i - 1].first << 32 >> 32) > 500) {
-
-            if (i == matches.size() - 1) {
-                ++i;
-            }
 
             if (i - j < 4) {
                 j = i;
@@ -221,31 +209,28 @@ bool is_contained(
                     matches.begin() + i, op_greater);
             }
 
-            target_begin = std::min(target_begin, matches[j + indices.front()].second >> 32);
-            target_end = std::max(target_end, 15 + (matches[j + indices.back()].second >> 32));
-            query_begin = std::min(query_begin, strand ?
+            // TODO: only check for groups in diag_eps of 500
+            // TODO: check lis if there are multiple target_pos
+            std::uint64_t target_begin = matches[j + indices.front()].second >> 32;
+            std::uint64_t target_end = 15 + (matches[j + indices.back()].second >> 32);
+            std::uint64_t query_begin = strand ?
                 matches[j + indices.front()].second << 32 >> 32 :
-                matches[j + indices.back()].second << 32 >> 32);
-            query_end = std::max(query_end, 15 + (strand ?
+                matches[j + indices.back()].second << 32 >> 32;
+            std::uint64_t query_end = 15 + (strand ?
                 matches[j + indices.back()].second << 32 >> 32 :
-                matches[j + indices.front()].second << 32 >> 32));
+                matches[j + indices.front()].second << 32 >> 32);
 
-            if (cc) {
-                std::uint32_t target_id = matches[i - 1].first >> 33;
-                std::uint32_t overhang = std::min(target_begin, query_begin) + std::min(
-                    sequence_lengths[id] - query_end,
-                    sequence_lengths[target_id] - target_end);
-                if (target_end - target_begin > (target_end - target_begin + overhang) * 0.875 &&
-                    query_end - query_begin > (query_end - query_begin + overhang) * 0.875 &&
-                    sequence_lengths[target_id] - target_end >= sequence_lengths[id] - query_end &&
-                    target_begin >= query_begin) {
-                    return true;
-                }
-                cc = false;
-                target_begin = -1;
-                target_end = 0;
-                query_begin = -1;
-                query_end = 0;
+            std::uint32_t target_id = matches[i - 1].first >> 33;
+            std::uint32_t overhang = std::min(target_begin, query_begin) + std::min(
+                sequence_lengths[id] - query_end,
+                sequence_lengths[target_id] - target_end);
+
+            if (target_end - target_begin > (target_end - target_begin + overhang) * 0.875 &&
+                query_end - query_begin > (query_end - query_begin + overhang) * 0.875 &&
+                sequence_lengths[target_id] - target_end >= sequence_lengths[id] - query_end &&
+                target_begin >= query_begin) {
+
+                return true;
             }
 
             j = i;

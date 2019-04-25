@@ -29,4 +29,7 @@ add_executable(ram
 
 target_link_libraries(ram bioparser logger)
 
+add_executable(acc src/accuracy.cpp)
+target_link_libraries(acc bioparser)
+
 install(TARGETS ram DESTINATION ${CMAKE_INSTALL_BINDIR})

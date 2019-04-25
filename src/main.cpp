@@ -83,13 +83,14 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
     std::sort(sequences.begin() + b, sequences.end(),
         [] (const std::unique_ptr<Sequence>& lhs,
             const std::unique_ptr<Sequence>& rhs) {
-            return lhs->data.size() < rhs->data.size();
+            return lhs->data.size() > rhs->data.size();
         }
     );
 
     uint32_t id = 0;
     std::vector<std::pair<uint64_t, uint64_t>> minimizers;
     for (std::uint32_t i = b; i < sequences.size(); ++i) {
+        // if (sequences[i]->data.size() < 10000) break;
         ram::createMinimizers(minimizers, sequences[i]->data.c_str(),
             sequences[i]->data.size(), id++, k, w);
     }
@@ -224,7 +225,7 @@ int main(int argc, char** argv) {
         std::cerr << "[ram::] error: file " << input_paths[0] <<
             " has unsupported format extension (valid extensions: .fasta, "
             ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
-        std::endl;
+            std::endl;
         return 1;
     }
 
@@ -244,7 +245,7 @@ int main(int argc, char** argv) {
                 std::cerr << "[ram::] error: file " << input_paths[i] <<
                     " has unsupported format extension (valid extensions: .fasta, "
                     ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
-                std::endl;
+                    std::endl;
                 return 1;
             }
         }
@@ -284,6 +285,11 @@ int main(int argc, char** argv) {
 
     std::cerr << "Num suriving reads: " << sequences.size() << std::endl;
     logger.total("[ram::] total time");
+
+    for (const auto& it: sequences) {
+        std::cout << ">" << it->name << std::endl;
+        std::cout << it->data << std::endl;
+    }
 
     return 0;
 }
