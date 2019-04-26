@@ -11,11 +11,13 @@
 #include "aligner.hpp"
 
 #include "bioparser/bioparser.hpp"
+#include "thread_pool/thread_pool.hpp"
 #include "logger/logger.hpp"
 
 static const std::string version = "v0.0.1";
 
 static struct option options[] = {
+    {"threads", required_argument, nullptr, 't'},
     {"version", no_argument, nullptr, 'v'},
     {"help", no_argument, nullptr, 'h'},
     {nullptr, 0, nullptr, 0}
@@ -75,7 +77,7 @@ void shrinkToFit(std::vector<T>& src, uint64_t begin) {
 
 void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
     std::uint32_t b, std::uint32_t e, std::uint32_t k, std::uint32_t w,
-    double f) {
+    double f, const std::unique_ptr<thread_pool::ThreadPool>& thread_pool) {
 
     logger::Logger logger;
     logger.log();
@@ -87,12 +89,10 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
         }
     );
 
-    uint32_t id = 0;
     std::vector<std::pair<uint64_t, uint64_t>> minimizers;
     for (std::uint32_t i = b; i < sequences.size(); ++i) {
-        // if (sequences[i]->data.size() < 10000) break;
         ram::createMinimizers(minimizers, sequences[i]->data.c_str(),
-            sequences[i]->data.size(), id++, k, w);
+            sequences[i]->data.size(), i - b, k, w);
     }
 
     std::cerr << "Num minimizers: " << minimizers.size() << std::endl;
@@ -143,38 +143,41 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
     logger.log();
 
     uint32_t num_contained = 0;
-    id = 0;
 
     std::vector<std::uint32_t> sequence_lengths(sequences.size() - b);
     for (std::uint32_t i = b; i < sequences.size(); ++i) {
         sequence_lengths[i - b] = sequences[i]->data.size();
     }
 
+    std::vector<std::future<void>> thread_futures;
     for (std::uint32_t i = b; i < sequences.size(); ++i) {
 
-        std::vector<std::pair<uint64_t, uint64_t>> sequence_minimizers;
-        if (sequences[i]->data.size() <= 2 * e) {
-            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                sequences[i]->data.size(), id, k, w);
-        } else {
-            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                e, id, k, w);
-            ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
-                sequences[i]->data.size() - e, e, id + 1, k, w);
-        }
+        thread_futures.emplace_back(thread_pool->submit(
+            [&](std::uint32_t j) -> void {
+                std::vector<std::pair<uint64_t, uint64_t>> sequence_minimizers;
+                if (sequences[j]->data.size() <= 2 * e) {
+                    ram::createMinimizers(sequence_minimizers, sequences[j]->data.c_str(),
+                        sequences[j]->data.size(), j - b, k, w);
+                } else {
+                    ram::createMinimizers(sequence_minimizers, sequences[j]->data.c_str(),
+                        e, j - b, k, w);
+                    ram::createMinimizers(sequence_minimizers, sequences[j]->data.c_str() +
+                        sequences[j]->data.size() - e, e, j - b + 1, k, w);
+                }
 
-        std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
+                std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
 
-        bool ic = ram::is_contained(sequence_minimizers, minimizers,
-            hash, id, sequences[i]->data.size() - e, max_occurence,
-            sequence_lengths);
+                bool ic = ram::is_contained(sequence_minimizers, minimizers,
+                    hash, j - b, sequences[j]->data.size() - e, max_occurence,
+                    sequence_lengths);
 
-        if (ic) {
-            sequences[i].reset();
-            ++num_contained;
-        }
-
-        ++id;
+                if (ic) {
+                    sequences[j].reset();
+                }
+            }, i));
+    }
+    for (const auto& it: thread_futures) {
+        it.wait();
     }
 
     shrinkToFit(sequences, b);
@@ -189,12 +192,14 @@ int main(int argc, char** argv) {
     std::uint32_t k = 15;
     std::uint32_t w = 5;
     double f = 0.001;
+    std::uint32_t num_threads = 1;
 
     std::vector<std::string> input_paths;
 
     char argument;
-    while ((argument = getopt_long(argc, argv, "h", options, nullptr)) != -1) {
+    while ((argument = getopt_long(argc, argv, "t:h", options, nullptr)) != -1) {
         switch (argument) {
+            case 't': num_threads = atoi(optarg); break;
             case 'v': std::cout << version << std::endl; return 0;
             case 'h': help(); return 0;
             default: return 1;
@@ -251,6 +256,8 @@ int main(int argc, char** argv) {
         }
     }
 
+    auto thread_pool = thread_pool::createThreadPool(num_threads);
+
     auto logger = logger::Logger();
 
     std::vector<std::unique_ptr<Sequence>> sequences;
@@ -267,7 +274,7 @@ int main(int argc, char** argv) {
 
         logger.log("[ram::] parsed sequences in ");
 
-        removeContained(sequences, l, e, k, w, f);
+        removeContained(sequences, l, e, k, w, f, thread_pool);
 
         std::uint64_t remaining_size = 0;
         for (std::uint32_t i = 0; i < sequences.size(); ++i) {
@@ -275,7 +282,7 @@ int main(int argc, char** argv) {
         }
 
         if (remaining_size > 256 * 1024 * 1024 || (!status && num_chunks > 1)) {
-            removeContained(sequences, 0, e, k, w, f);
+            removeContained(sequences, 0, e, k, w, f, thread_pool);
         }
 
         if (!status) {
@@ -303,6 +310,9 @@ void help() {
         "        containing sequences\n"
         "\n"
         "    options:\n"
+        "        -t, --threads <int>\n"
+        "            default: 1\n"
+        "            number of threads\n"
         "        --version\n"
         "            prints the version number\n"
         "        -h, --help\n"

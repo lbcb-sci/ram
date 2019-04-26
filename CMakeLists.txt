@@ -15,9 +15,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if (NOT TARGET bioparser)
     add_subdirectory(vendor/bioparser EXCLUDE_FROM_ALL)
 endif()
-# if (NOT TARGET thread_pool)
-    # add_subdirectory(vendor/thread_pool EXCLUDE_FROM_ALL)
-# endif()
+if (NOT TARGET thread_pool)
+    add_subdirectory(vendor/thread_pool EXCLUDE_FROM_ALL)
+endif()
 if (NOT TARGET logger)
     add_subdirectory(vendor/logger EXCLUDE_FROM_ALL)
 endif()
@@ -27,7 +27,7 @@ add_executable(ram
     src/main.cpp
     src/minimizers.cpp)
 
-target_link_libraries(ram bioparser logger)
+target_link_libraries(ram bioparser thread_pool pthread logger)
 
 add_executable(acc src/accuracy.cpp)
 target_link_libraries(acc bioparser)
