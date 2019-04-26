@@ -183,7 +183,7 @@ bool is_contained(
     auto op_less = std::less<std::uint64_t>();
     auto op_greater = std::greater<std::uint64_t>();
 
-    for (unsigned i = 1, j = 0; i < matches.size(); ++i) {
+    for (std::uint32_t i = 1, j = 0; i < matches.size(); ++i) {
         if ((matches[i].first >> 32) != (matches[i - 1].first >> 32) ||
             (matches[i].first << 32 >> 32) - (matches[i - 1].first << 32 >> 32) > 500) {
 

@@ -121,7 +121,9 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
     std::uint32_t count = 0;
     for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
         if (i != 0 && minimizers[i - 1].first != minimizers[i].first) {
-            hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
+            if (count > 1) {
+                hash[minimizers[i - 1].first] = std::make_pair(i - count, count);
+            }
             counts.emplace_back(count);
             count = 0;
         }
@@ -141,8 +143,6 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
 
     logger.log("[ram::] found occurences in");
     logger.log();
-
-    uint32_t num_contained = 0;
 
     std::vector<std::uint32_t> sequence_lengths(sequences.size() - b);
     for (std::uint32_t i = b; i < sequences.size(); ++i) {
@@ -182,7 +182,6 @@ void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
 
     shrinkToFit(sequences, b);
 
-    std::cerr << "Num contained reads: " << num_contained << std::endl;
     logger.log("[ram::] mapped in");
 }
 
@@ -272,7 +271,7 @@ int main(int argc, char** argv) {
 
         std::cerr << "Num sequences: " << sequences.size() - l << std::endl;
 
-        logger.log("[ram::] parsed sequences in ");
+        logger.log("[ram::] parsed sequences in");
 
         removeContained(sequences, l, e, k, w, f, thread_pool);
 
