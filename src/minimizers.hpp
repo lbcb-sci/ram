@@ -13,23 +13,33 @@
 #include <tuple>
 #include <unordered_map>
 
+namespace thread_pool {
+    class ThreadPool;
+}
+
 namespace ram {
+
+using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
 
 // [127: 64] := minimizer
 // [ 63: 32] := identifier
 // [ 31:  1] := position
 // [  0:  0] := strand
-void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
-    const char* sequence, std::uint32_t sequence_length, std::uint32_t id,
+void createMinimizers(std::vector<uint128_t>& dst, const char* sequence,
+    std::uint32_t sequence_length, std::uint32_t sequence_id,
     std::uint32_t k, std::uint32_t w);
 
-void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
-    std::uint32_t k);
+void sortMinimizers(std::vector<uint128_t>& src, std::uint32_t k) noexcept;
+
+void transformMinimizers(std::vector<std::vector<uint128_t>>& hash,
+    std::vector<std::unordered_map<std::uint64_t, uint128_t>>& index,
+    std::vector<std::vector<uint128_t>>& minimizers, std::uint32_t k,
+    const std::unique_ptr<thread_pool::ThreadPool>& thread_pool);
 
 template<typename Operator>
 inline std::vector<std::uint32_t> longestSubsequence(
-    std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator begin,
-    std::vector<std::pair<std::uint64_t, std::uint64_t>>::const_iterator end,
+    std::vector<uint128_t>::const_iterator begin,
+    std::vector<uint128_t>::const_iterator end,
     const Operator& op) {
 
     if (begin >= end) {
@@ -72,17 +82,15 @@ inline std::vector<std::uint32_t> longestSubsequence(
 // [ 95: 64] := diagonal identifier
 // [ 63: 32] := target position
 // [ 31:  0] := query position
-std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
-    const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+std::vector<uint128_t> map(const std::vector<uint128_t>& query,
+    const std::vector<std::vector<uint128_t>>& target,
+    const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
     std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence);
 
-bool is_contained(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
-    const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+bool is_contained(const std::vector<uint128_t>& query,
+    const std::vector<std::vector<uint128_t>>& target,
+    const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
     std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
-    const std::vector<std::uint32_t>& sequence_lengths);
+    std::uint32_t query_length, const std::vector<std::uint32_t>& sequence_lengths);
 
 }

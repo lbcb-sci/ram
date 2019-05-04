@@ -10,11 +10,13 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include "thread_pool/thread_pool.hpp"
+
 #include "minimizers.hpp"
 
 namespace ram {
 
-std::vector<uint8_t> coder = {
+std::vector<std::uint8_t> coder = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -33,8 +35,8 @@ std::vector<uint8_t> coder = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 };
 
-void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
-    const char* sequence, std::uint32_t sequence_length, std::uint32_t id,
+void createMinimizers(std::vector<uint128_t>& dst, const char* sequence,
+    std::uint32_t sequence_length, std::uint32_t sequence_id,
     std::uint32_t k, std::uint32_t w) {
 
     if (k > 32) {
@@ -46,11 +48,11 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
         return;
     }
 
-    uint64_t mask = (1ULL << (k * 2)) - 1;
-    uint64_t shift = (k - 1) * 2;
-    uint64_t minimizer = 0, reverse_minimizer = 0;
+    std::uint64_t mask = (1ULL << (k * 2)) - 1;
+    std::uint64_t shift = (k - 1) * 2;
+    std::uint64_t minimizer = 0, reverse_minimizer = 0;
 
-    std::deque<std::pair<std::uint64_t, std::uint64_t>> window;
+    std::deque<uint128_t> window;
     auto window_add = [&window](std::uint64_t value, std::uint64_t location) -> void {
         while (!window.empty() && window.back().first > value) {
             window.pop_back();
@@ -63,7 +65,7 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
         }
     };
 
-    std::uint64_t t = static_cast<std::uint64_t>(id) << 32;
+    std::uint64_t id = static_cast<std::uint64_t>(sequence_id) << 32;
 
     for (std::uint32_t i = 0; i < sequence_length; ++i) {
         std::uint64_t c = coder[sequence[i]];
@@ -73,32 +75,30 @@ void createMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& dst,
         }
         minimizer = ((minimizer << 2) | c) & mask;
         reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
-        if (i >= (k - 1) + w) {
+        if (i >= k - 1) {
+            if (minimizer < reverse_minimizer) {
+                window_add(minimizer, id | ((i - (k - 1)) << 1 | 0));
+            } else if (minimizer > reverse_minimizer) {
+                window_add(reverse_minimizer, id | ((i - (k - 1)) << 1 | 1));
+            }
+        }
+        if (i >= (k - 1) + (w - 1)) {
             if (dst.empty() ||
                 dst.back().second != window.front().second) {
                 dst.emplace_back(window.front());
             }
-            window_update(i - (k - 1) - (w - 1));
-        }
-        if (i >= k - 1) {
-            if (minimizer < reverse_minimizer) {
-                window_add(minimizer, t | ((i - (k - 1)) << 1 | 0));
-            } else if (minimizer > reverse_minimizer) {
-                window_add(reverse_minimizer, t | ((i - (k - 1)) << 1 | 1));
-            }
+            window_update(i - (k - 1) - (w - 1) + 1);
         }
     }
 }
 
-void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
-    std::uint32_t k) {
+void sortMinimizers(std::vector<uint128_t>& src, std::uint32_t k) noexcept {
 
     if (src.empty()) {
-        throw std::invalid_argument("[ram::sortMinimizers] error: "
-            "empty minimizer set");
+        return;
     }
 
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> dst(src.size());
+    std::vector<uint128_t> dst(src.size());
     std::uint32_t buckets[0x100] = {};
     std::uint32_t max_shift = ((2 * k + 7) / 8) * 8;
 
@@ -117,24 +117,68 @@ void sortMinimizers(std::vector<std::pair<std::uint64_t, std::uint64_t>>& src,
     }
 }
 
-std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
-    const std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>& target_hash,
+void transformMinimizers(std::vector<std::vector<uint128_t>>& hash,
+    std::vector<std::unordered_map<std::uint64_t, uint128_t>>& index,
+    std::vector<std::vector<uint128_t>>& minimizers, std::uint32_t k,
+    const std::unique_ptr<thread_pool::ThreadPool>& thread_pool) {
+
+    hash.clear();
+    hash.resize(0x4000);
+
+    index.clear();
+    index.resize(hash.size());
+
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+        for (const auto& it: minimizers[i]) {
+            hash[it.first & 0x3FFF].emplace_back(it);
+        }
+        std::vector<uint128_t>().swap(minimizers[i]);
+    }
+
+    std::vector<std::future<void>> thread_futures;
+    for (std::uint32_t i = 0; i < hash.size(); ++i) {
+        thread_futures.emplace_back(thread_pool->submit(
+            [&hash, &index, k] (std::uint32_t i) -> void {
+                if (hash[i].empty()) {
+                    return;
+                }
+                ram::sortMinimizers(hash[i], k);
+                for (std::uint32_t j = 0, count = 0; j < hash[i].size(); ++j) {
+                    if (j > 0 && hash[i][j - 1].first != hash[i][j].first) {
+                        index[i][hash[i][j - 1].first] = std::make_pair(j - count, count);
+                        count = 0;
+                    }
+                    if (j == hash[i].size() - 1) {
+                        index[i][hash[i][j].first] = std::make_pair(j - count, count + 1);
+                    }
+                    ++count;
+                }
+            }
+        , i));
+    }
+    for (const auto& it: thread_futures) {
+        it.wait();
+    }
+    thread_futures.clear();
+}
+
+std::vector<uint128_t> map(const std::vector<uint128_t>& query,
+    const std::vector<std::vector<uint128_t>>& target,
+    const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
     std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence) {
 
-    std::vector<std::pair<std::uint64_t, std::uint64_t>> matches;
+    std::vector<uint128_t> matches;
 
     for (std::uint32_t i = 0; i < query.size(); i++) {
-
-        const auto it = target_hash.find(query[i].first);
-        if (it != target_hash.end()) {
+        std::uint32_t bin = query[i].first & 0x3FFF;
+        const auto it = target_hash[bin].find(query[i].first);
+        if (it != target_hash[bin].end()) {
             const auto& range = it->second;
             if (range.second >= max_occurence) {
                 continue;
             }
             for (std::uint32_t j = range.first; j < range.first + range.second; j++) {
-                std::uint64_t strand = (query[i].second & 1) == (target[j].second & 1);
+                std::uint64_t strand = (query[i].second & 1) == (target[bin][j].second & 1);
 
                 std::uint64_t query_id = query[i].second >> 32;
                 std::uint64_t query_pos = query[i].second << 32 >> 33;
@@ -144,10 +188,9 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
                     query_id -= 1;
                 }
 
-                std::uint64_t target_id = target[j].second >> 32;
-                std::uint64_t target_pos = target[j].second << 32 >> 33;
+                std::uint64_t target_id = target[bin][j].second >> 32;
+                std::uint64_t target_pos = target[bin][j].second << 32 >> 33;
 
-                // TODO: take minimizers from first/last non-singleton minimizer!
                 if (query_id <= target_id) {
                     break;
                 }
@@ -165,16 +208,15 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> map(
     return matches;
 }
 
-bool is_contained(
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& query,
-    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& target,
-    const std::unordered_map<uint64_t, std::pair<uint32_t, uint32_t>>& target_hash,
+bool is_contained(const std::vector<uint128_t>& query,
+    const std::vector<std::vector<uint128_t>>& target,
+    const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
     std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
-    const std::vector<std::uint32_t>& sequence_lengths) {
+    std::uint32_t query_length, const std::vector<std::uint32_t>& sequence_lengths) {
 
     auto matches = ram::map(query, target, target_hash, id, offset, max_occurence);
 
-    if (matches.size() <= 0) {
+    if (matches.empty()) {
         return false;
     }
 
@@ -183,6 +225,7 @@ bool is_contained(
     auto op_less = std::less<std::uint64_t>();
     auto op_greater = std::greater<std::uint64_t>();
 
+    matches.emplace_back(-1, -1); // stop dummy
     for (std::uint32_t i = 1, j = 0; i < matches.size(); ++i) {
         if ((matches[i].first >> 32) != (matches[i - 1].first >> 32) ||
             (matches[i].first << 32 >> 32) - (matches[i - 1].first << 32 >> 32) > 500) {
@@ -193,8 +236,7 @@ bool is_contained(
             }
 
             std::sort(matches.begin() + j, matches.begin() + i,
-                [] (const std::pair<std::uint64_t, std::uint64_t>& lhs,
-                    const std::pair<std::uint64_t, std::uint64_t>& rhs) {
+                [] (const uint128_t& lhs, const uint128_t& rhs) {
                     return lhs.second < rhs.second;
                 }
             );
@@ -209,8 +251,7 @@ bool is_contained(
                     matches.begin() + i, op_greater);
             }
 
-            // TODO: only check for groups in diag_eps of 500
-            // TODO: check lis if there are multiple target_pos
+            // TODO: check if there are duplicate matches in LIS
             std::uint64_t target_begin = matches[j + indices.front()].second >> 32;
             std::uint64_t target_end = 15 + (matches[j + indices.back()].second >> 32);
             std::uint64_t query_begin = strand ?
@@ -222,12 +263,11 @@ bool is_contained(
 
             std::uint32_t target_id = matches[i - 1].first >> 33;
             std::uint32_t overhang = std::min(target_begin, query_begin) + std::min(
-                sequence_lengths[id] - query_end,
-                sequence_lengths[target_id] - target_end);
+                query_length - query_end, sequence_lengths[target_id] - target_end);
 
             if (target_end - target_begin > (target_end - target_begin + overhang) * 0.875 &&
                 query_end - query_begin > (query_end - query_begin + overhang) * 0.875 &&
-                sequence_lengths[target_id] - target_end >= sequence_lengths[id] - query_end &&
+                sequence_lengths[target_id] - target_end >= query_length - query_end &&
                 target_begin >= query_begin) {
 
                 return true;
