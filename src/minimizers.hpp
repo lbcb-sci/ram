@@ -50,12 +50,16 @@ inline std::vector<std::uint32_t> longestSubsequence(
     std::vector<std::uint32_t> smallest(end - begin + 1, 0);
     std::vector<std::uint32_t> predecessor(end - begin, 0);
 
+    // TODO: not sure about double lis
+    auto op_less = std::less<std::uint64_t>();
+
     std::uint32_t length = 0;
     for (auto it = begin; it != end; ++it) {
         std::uint32_t l = 1, h = length;
         while (l <= h) {
             std::uint32_t m = (l + h) >> 1;
-            if (op((begin + smallest[m])->second << 32 >> 32, it->second << 32 >> 32)) {
+            if (op_less((begin + smallest[m])->second >> 32, it->second >> 32) &&
+                op((begin + smallest[m])->second << 32 >> 32, it->second << 32 >> 32)) {
                 l = m + 1;
             } else {
                 h = m - 1;

@@ -251,7 +251,6 @@ bool is_contained(const std::vector<uint128_t>& query,
                     matches.begin() + i, op_greater);
             }
 
-            // TODO: check if there are duplicate matches in LIS
             std::uint64_t target_begin = matches[j + indices.front()].second >> 32;
             std::uint64_t target_end = 15 + (matches[j + indices.back()].second >> 32);
             std::uint64_t query_begin = strand ?
