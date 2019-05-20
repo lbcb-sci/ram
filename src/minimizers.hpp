@@ -89,7 +89,8 @@ inline std::vector<std::uint32_t> longestSubsequence(
 std::vector<uint128_t> map(const std::vector<uint128_t>& query,
     const std::vector<std::vector<uint128_t>>& target,
     const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
-    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence);
+    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
+    bool diagonal, bool triangle);
 
 bool is_contained(const std::vector<uint128_t>& query,
     const std::vector<std::vector<uint128_t>>& target,

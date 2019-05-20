@@ -165,7 +165,8 @@ void transformMinimizers(std::vector<std::vector<uint128_t>>& hash,
 std::vector<uint128_t> map(const std::vector<uint128_t>& query,
     const std::vector<std::vector<uint128_t>>& target,
     const std::vector<std::unordered_map<std::uint64_t, uint128_t>>& target_hash,
-    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence) {
+    std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
+    bool diagonal, bool triangle) {
 
     std::vector<uint128_t> matches;
 
@@ -191,7 +192,10 @@ std::vector<uint128_t> map(const std::vector<uint128_t>& query,
                 std::uint64_t target_id = target[bin][j].second >> 32;
                 std::uint64_t target_pos = target[bin][j].second << 32 >> 33;
 
-                if (query_id <= target_id) {
+                if (diagonal && query_id == target_id) {
+                    continue;
+                }
+                if (triangle && query_id < target_id) {
                     break;
                 }
 
@@ -214,7 +218,8 @@ bool is_contained(const std::vector<uint128_t>& query,
     std::uint32_t id, std::uint32_t offset, std::uint32_t max_occurence,
     std::uint32_t query_length, const std::vector<std::uint32_t>& sequence_lengths) {
 
-    auto matches = ram::map(query, target, target_hash, id, offset, max_occurence);
+    auto matches = ram::map(query, target, target_hash, id, offset,
+        max_occurence, true, true);
 
     if (matches.empty()) {
         return false;
