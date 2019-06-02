@@ -5,16 +5,14 @@
 #include <vector>
 #include <cstdint>
 #include <algorithm>
-#include <unordered_map>
 
 #include "bioparser/bioparser.hpp"
 #include "thread_pool/thread_pool.hpp"
 #include "logger/logger.hpp"
 
-#include "minimizers.hpp"
-#include "aligner.hpp"
+#include "ram/ram.hpp"
 
-static const std::string version = "v0.0.1";
+static const std::string version = "v0.0.2";
 
 static struct option options[] = {
     {"threads", required_argument, nullptr, 't'},
@@ -24,30 +22,6 @@ static struct option options[] = {
 };
 
 void help();
-
-struct Sequence {
-    Sequence(const char* name, std::uint32_t name_length,
-        const char* data, std::uint32_t data_length)
-            : id(sequence_id++), name(name, name_length), data(data, data_length) {
-    }
-
-    Sequence(const char* name, std::uint32_t name_length,
-        const char* data, std::uint32_t data_length,
-        const char*, std::uint32_t)
-            : Sequence(name, name_length, data, data_length) {
-    }
-
-    ~Sequence() {
-    }
-
-    static std::uint32_t sequence_id;
-
-    std::uint32_t id;
-    std::string name;
-    std::string data;
-};
-
-std::uint32_t Sequence::sequence_id = 0;
 
 inline bool isSuffix(const std::string& src, const std::string& suffix) {
     return src.size() < suffix.size() ? false :
@@ -77,214 +51,6 @@ void shrinkToFit(std::vector<T>& src, std::uint64_t begin) {
     if (i < src.size()) {
         src.resize(i);
     }
-}
-
-void removeContained(std::vector<std::unique_ptr<Sequence>>& sequences,
-    std::uint32_t b, std::uint32_t lid, std::uint32_t e, std::uint32_t k,
-    std::uint32_t w, double f,
-    const std::unique_ptr<thread_pool::ThreadPool>& thread_pool) {
-
-    logger::Logger logger;
-    logger.log();
-
-    std::sort(sequences.begin() + b, sequences.end(),
-        [] (const std::unique_ptr<Sequence>& lhs,
-            const std::unique_ptr<Sequence>& rhs) -> bool {
-            return lhs->data.size() > rhs->data.size();
-        }
-    );
-
-    std::vector<std::vector<ram::uint128_t>> minimizers(sequences.size() - b);
-    std::vector<std::future<void>> thread_futures;
-    std::uint32_t num_minimizers = 0;
-    for (std::uint32_t i = b; i < sequences.size(); ++i) {
-        if (sequences[i]->data.size() < 10000) {
-            break;
-        }
-        thread_futures.emplace_back(thread_pool->submit(
-            [&minimizers, &sequences, b, k, w] (std::uint32_t i) -> void {
-                ram::createMinimizers(minimizers[i - b], sequences[i]->data.c_str(),
-                    sequences[i]->data.size(), i, k, w);
-            }
-        , i));
-    }
-    for (std::uint32_t i = 0; i < thread_futures.size(); ++i) {
-        thread_futures[i].wait();
-        num_minimizers += minimizers[i].size();
-    }
-    thread_futures.clear();
-
-    std::cerr << "Num minimizers: " << num_minimizers << std::endl;
-
-    logger.log("[ram::] collected minimizers in");
-    logger.log();
-
-    std::vector<std::vector<ram::uint128_t>> hash;
-    std::vector<std::unordered_map<std::uint64_t, ram::uint128_t>> index;
-    ram::transformMinimizers(hash, index, minimizers, k, thread_pool);
-
-    logger.log("[ram::] created hash in");
-    logger.log();
-
-    std::vector<std::uint32_t> counts;
-    for (std::uint32_t i = 0; i < index.size(); ++i) {
-        for (const auto& it: index[i]) {
-            counts.emplace_back(it.second.second);
-        }
-    }
-
-    std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
-        counts.end());
-    std::uint32_t max_occurence = counts[(1 - f) * counts.size()];
-
-    std::cerr << "Counts size: " << counts.size() << std::endl;
-    std::cerr << "Max occurence: " << max_occurence << std::endl;
-
-    logger.log("[ram::] found occurences in");
-    logger.log();
-
-    std::vector<std::uint32_t> sequence_lengths;
-    for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-        sequence_lengths.emplace_back(sequences[i]->data.size());
-    }
-
-    std::vector<std::uint32_t> id_map;
-    for (std::uint32_t i = 0, j = b; i < b; ++i) {
-        while (j < sequences.size() && sequences[i]->data.size() < sequences[j]->data.size()) {
-            ++j;
-        }
-        id_map.emplace_back(j);
-    }
-
-    for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-        thread_futures.emplace_back(thread_pool->submit(
-            [&sequences, &sequence_lengths, &hash, &index, &id_map, b, e, k, w, max_occurence] (std::uint32_t i) -> void {
-                std::vector<ram::uint128_t> sequence_minimizers;
-                if (sequences[i]->data.size() <= 2 * e) {
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                        sequences[i]->data.size(), i < b ? id_map[i] : i, k, w);
-                } else {
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                        e, i < b ? id_map[i] : i, k, w);
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
-                        sequences[i]->data.size() - e, e, (i < b ? id_map[i] : i) + 1, k, w);
-                }
-
-                std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
-
-                bool ic = ram::is_contained(sequence_minimizers, hash, index,
-                    i < b ? id_map[i] : i, sequences[i]->data.size() - e, max_occurence,
-                    sequences[i]->data.size(), sequence_lengths);
-
-                if (ic) {
-                    sequences[i].reset();
-                }
-            }, i));
-    }
-    for (const auto& it: thread_futures) {
-        it.wait();
-    }
-    thread_futures.clear();
-
-    shrinkToFit(sequences, 0);
-
-    logger.log("[ram::] mapped in");
-    logger.log();
-
-    // map new to old
-    for (b = 0; b < sequences.size() && sequences[b]->id < lid; ++b);
-    if (b == 0) {
-        return;
-    }
-    minimizers.resize(b);
-
-    for (std::uint32_t i = 0; i < b; ++i) {
-        if (sequences[i]->data.size() < 10000) {
-            break;
-        }
-        thread_futures.emplace_back(thread_pool->submit(
-            [&minimizers, &sequences, k, w] (std::uint32_t i) -> void {
-                ram::createMinimizers(minimizers[i], sequences[i]->data.c_str(),
-                    sequences[i]->data.size(), i, k, w);
-            }
-        , i));
-    }
-    for (const auto& it: thread_futures) {
-        it.wait();
-    }
-    thread_futures.clear();
-
-    logger.log("[ram::] collected 2nd part of minimizers in");
-    logger.log();
-
-    ram::transformMinimizers(hash, index, minimizers, k, thread_pool);
-
-    logger.log("[ram::] created 2nd part of hash in");
-    logger.log();
-
-    counts.clear();
-    for (std::uint32_t i = 0; i < index.size(); ++i) {
-        for (const auto& it: index[i]) {
-            counts.emplace_back(it.second.second);
-        }
-    }
-
-    std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
-        counts.end());
-    max_occurence = counts[(1 - f) * counts.size()];
-
-    std::cerr << "Counts size: " << counts.size() << std::endl;
-    std::cerr << "Max occurence: " << max_occurence << std::endl;
-
-    logger.log("[ram::] found 2nd part of occurences in");
-    logger.log();
-
-    sequence_lengths.clear();
-    for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-        sequence_lengths.emplace_back(sequences[i]->data.size());
-    }
-
-    id_map.clear();
-    for (std::uint32_t i = b, j = 0; i < sequences.size(); ++i) {
-        while (j < b && sequences[i]->data.size() < sequences[j]->data.size()) {
-            ++j;
-        }
-        id_map.emplace_back(j);
-    }
-
-    for (std::uint32_t i = b; i < sequences.size(); ++i) {
-        thread_futures.emplace_back(thread_pool->submit(
-            [&sequences, &sequence_lengths, &hash, &index, &id_map, b, e, k, w, max_occurence] (std::uint32_t i) -> void {
-                std::vector<ram::uint128_t> sequence_minimizers;
-                if (sequences[i]->data.size() <= 2 * e) {
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                        sequences[i]->data.size(), id_map[i - b], k, w);
-                } else {
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str(),
-                        e, id_map[i - b], k, w);
-                    ram::createMinimizers(sequence_minimizers, sequences[i]->data.c_str() +
-                        sequences[i]->data.size() - e, e, id_map[i - b] + 1, k, w);
-                }
-
-                std::sort(sequence_minimizers.begin(), sequence_minimizers.end());
-
-                bool ic = ram::is_contained(sequence_minimizers, hash, index,
-                    id_map[i - b], sequences[i]->data.size() - e, max_occurence,
-                    sequences[i]->data.size(), sequence_lengths);
-
-                if (ic) {
-                    sequences[i].reset();
-                }
-            }, i));
-    }
-    for (const auto& it: thread_futures) {
-        it.wait();
-    }
-    thread_futures.clear();
-
-    shrinkToFit(sequences, 0);
-
-    logger.log("[ram::] 2nd part mapped in");
 }
 
 int main(int argc, char** argv) {
@@ -317,15 +83,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::unique_ptr<bioparser::Parser<Sequence>> sparser = nullptr;
+    std::unique_ptr<bioparser::Parser<ram::Sequence>> sparser = nullptr;
 
     if (isSuffix(input_paths[0], ".fasta") || isSuffix(input_paths[0], ".fa") ||
         isSuffix(input_paths[0], ".fasta.gz") || isSuffix(input_paths[0], ".fa.gz")) {
-        sparser = bioparser::createParser<bioparser::FastaParser, Sequence>(
+        sparser = bioparser::createParser<bioparser::FastaParser, ram::Sequence>(
             input_paths[0]);
     } else if (isSuffix(input_paths[0], ".fastq") || isSuffix(input_paths[0], ".fq") ||
                isSuffix(input_paths[0], ".fastq.gz") || isSuffix(input_paths[0], ".fq.gz")) {
-        sparser = bioparser::createParser<bioparser::FastqParser, Sequence>(
+        sparser = bioparser::createParser<bioparser::FastqParser, ram::Sequence>(
             input_paths[0]);
     } else {
         std::cerr << "[ram::] error: file " << input_paths[0] <<
@@ -335,17 +101,17 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::vector<std::unique_ptr<bioparser::Parser<Sequence>>> tparsers;
+    std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> tparsers;
 
     if (input_paths.size() > 1) {
         for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
             if (isSuffix(input_paths[i], ".fasta") || isSuffix(input_paths[i], ".fa") ||
                 isSuffix(input_paths[i], ".fasta.gz") || isSuffix(input_paths[i], ".fa.gz")) {
-                tparsers.emplace_back(bioparser::createParser<bioparser::FastaParser, Sequence>(
+                tparsers.emplace_back(bioparser::createParser<bioparser::FastaParser, ram::Sequence>(
                     input_paths[i]));
             } else if (isSuffix(input_paths[i], ".fastq") || isSuffix(input_paths[i], ".fq") ||
                        isSuffix(input_paths[i], ".fastq.gz") || isSuffix(input_paths[i], ".fq.gz")) {
-                tparsers.emplace_back(bioparser::createParser<bioparser::FastqParser, Sequence>(
+                tparsers.emplace_back(bioparser::createParser<bioparser::FastqParser, ram::Sequence>(
                     input_paths[i]));
             } else {
                 std::cerr << "[ram::] error: file " << input_paths[i] <<
@@ -361,35 +127,83 @@ int main(int argc, char** argv) {
 
     auto logger = logger::Logger();
 
-    std::vector<std::unique_ptr<Sequence>> sequences;
+    ram::MinimizerEngine minimizer_engine(k, w, num_threads);
+
+    std::vector<std::unique_ptr<ram::Sequence>> sequences;
     std::uint32_t num_chunks = 0;
     while (true) {
         ++num_chunks;
 
         logger.log();
 
-        std::uint32_t l = sequences.size();
-        std::uint32_t lid = Sequence::sequence_id;
-        bool status = sparser->parse(sequences, 512 * 1024 * 1024);
-
-        std::cerr << "Num sequences: " << sequences.size() - l << std::endl;
+        bool status = sparser->parse(sequences, -1);
+        std::sort(sequences.begin(), sequences.end(),
+            [] (const std::unique_ptr<ram::Sequence>& lhs,
+                const std::unique_ptr<ram::Sequence>& rhs) -> bool {
+                return lhs->data.size() > rhs->data.size();
+            });
+        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
+            sequences[i]->id = i;
+        }
 
         logger.log("[ram::] parsed sequences in");
+        logger.log();
 
-        removeContained(sequences, l, lid, e, k, w, f, thread_pool);
+        minimizer_engine.minimize(sequences.begin(),
+            sequences.begin() + 0.1 * sequences.size(), f);
+
+        logger.log("[ram::] created minimizers in");
+        logger.log();
+
+        std::vector<bool> is_valid(sequences.size(), true);
+
+        std::vector<std::future<void>> thread_futures;
+        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
+            thread_futures.emplace_back(thread_pool->submit(
+                [&] (std::uint32_t i) -> void {
+                    auto overlaps = minimizer_engine.map(sequences[i], true, true, e);
+                    for (const auto& it: overlaps) {
+                        std::uint32_t overhang = std::min(it.t_begin, it.q_begin) +
+                            std::min(sequences[i]->data.size() - it.q_end,
+                            sequences[it.t_id]->data.size() - it.t_end);
+
+                        if (it.t_end - it.t_begin > (it.t_end - it.t_begin + overhang) * 0.875 &&
+                            it.q_end - it.q_begin > (it.q_end - it.q_begin + overhang) * 0.875 &&
+                            sequences[it.t_id]->data.size() - it.t_end >= sequences[i]->data.size() - it.q_end &&
+                            it.t_begin >= it.q_begin) {
+
+                            is_valid[i] = false;
+                            break;
+                        }
+                    }
+                }
+            , i));
+        }
+        for (const auto& it: thread_futures) {
+            it.wait();
+        }
+
+        logger.log("[ram::] mapped in");
+
+        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
+            if (!is_valid[i]) {
+                sequences[i].reset();
+            }
+        }
+        shrinkToFit(sequences, 0);
 
         if (!status) {
             break;
         }
     }
 
-    std::cerr << "Num suriving reads: " << sequences.size() << std::endl;
+    std::cerr << "[ram::] num uncontained sequences = " << sequences.size() << std::endl;
     logger.total("[ram::] total time");
 
-    for (const auto& it: sequences) {
+    /*for (const auto& it: sequences) {
         std::cout << ">" << it->name << std::endl;
         std::cout << it->data << std::endl;
-    }
+    }*/
 
     return 0;
 }
