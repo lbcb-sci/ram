@@ -33,7 +33,7 @@ script:
     - cd build
     - cmake -DCMAKE_BUILD_TYPE=Release -Dram_build_executable=ON ..
     - make
-    - ./bin/ram
+    - ./bin/ram --help
 
 notifications:
     email:
