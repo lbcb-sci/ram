@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
         logger.log("[ram::] created minimizers in");
         logger.log();
 
-        std::vector<bool> is_valid(sequences.size(), true);
+        std::vector<uint32_t> is_valid(sequences.size(), 1);
 
         std::vector<std::future<void>> thread_futures;
         for (std::uint32_t i = 0; i < sequences.size(); ++i) {
@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
                             sequences[it.t_id]->data.size() - it.t_end >= sequences[i]->data.size() - it.q_end &&
                             it.t_begin >= it.q_begin) {
 
-                            is_valid[i] = false;
+                            is_valid[i] = 0;
                             break;
                         }
                     }
