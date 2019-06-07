@@ -155,9 +155,9 @@ void MinimizerEngine::minimize(
             counts.emplace_back(it.second.second - it.second.first);
         }
     }
-    std::nth_element(counts.begin(), counts.begin() + (1 - f) * counts.size(),
+    std::nth_element(counts.begin(), counts.begin() + (1 - f) * (counts.size() - 1),
         counts.end());
-    s_ = counts[(1 - f) * counts.size()];
+    s_ = counts[(1 - f) * (counts.size() - 1)];
 }
 
 std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& src,
@@ -286,7 +286,7 @@ std::vector<uint128_t> MinimizerEngine::minimize(const std::unique_ptr<Sequence>
         }
         if (i >= (k_ - 1U) + (w_ - 1U)) {
             if ((dst.empty() || dst.back().second != window.front().second) &&
-                (i < b || i - (k_ - 1U) > e)) {
+                (i < b || i - (k_ - 1U) >= e)) {
                 dst.emplace_back(window.front());
             }
             window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
