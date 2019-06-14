@@ -149,8 +149,8 @@ int main(int argc, char** argv) {
         logger.log("[ram::] parsed sequences in");
         logger.log();
 
-        minimizer_engine.minimize(sequences.begin(),
-            sequences.begin() + 0.1 * sequences.size(), f);
+        minimizer_engine.minimize(sequences.begin(), sequences.end(), f);
+            //sequences.begin() + 0.1 * sequences.size(), f);
 
         logger.log("[ram::] created minimizers in");
         logger.log();
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
         for (std::uint32_t i = 0; i < sequences.size(); ++i) {
             thread_futures.emplace_back(thread_pool->submit(
                 [&] (std::uint32_t i) -> void {
-                    auto overlaps = minimizer_engine.map(sequences[i], true, true, e);
+                    auto overlaps = minimizer_engine.map(sequences[i], true, true);
                     for (const auto& it: overlaps) {
                         std::uint32_t overhang = std::min(it.t_begin, it.q_begin) +
                             std::min(sequences[i]->data.size() - it.q_end,
