@@ -310,7 +310,8 @@ void MinimizerEngine::radix_sort(
     auto b = dst.begin(), e = dst.end();
     std::uint64_t buckets[0x100] = {};
 
-    for (std::uint8_t shift = 0; shift < num_bits; shift += 8) {
+    std::uint8_t shift = 0;
+    for (; shift < num_bits; shift += 8) {
         std::uint64_t counts[0x100] = {};
         for (auto it = begin; it != end; ++it) {
             if (first) {
@@ -331,6 +332,11 @@ void MinimizerEngine::radix_sort(
         }
         std::swap(b, begin);
         std::swap(e, end);
+    }
+    if (shift / 8 & 1) {
+        for (; begin != end; ++begin, ++b) {
+            *b = *begin;
+        }
     }
 }
 
