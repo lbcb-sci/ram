@@ -55,12 +55,12 @@ public:
         std::uint32_t num_threads = 1);
     ~MinimizerEngine() = default;
 
-    void minimize(const std::vector<std::unique_ptr<Sequence>>& src,
-        double f = 0.001);
+    void minimize(const std::vector<std::unique_ptr<Sequence>>& src);
     void minimize(
         std::vector<std::unique_ptr<Sequence>>::const_iterator begin,
-        std::vector<std::unique_ptr<Sequence>>::const_iterator end,
-        double f = 0.001);
+        std::vector<std::unique_ptr<Sequence>>::const_iterator end);
+
+    void filter(double f);
 
     std::vector<Overlap> map(const std::unique_ptr<Sequence>& src,
         bool diagonal, bool triangle, std::uint32_t e = -1) const;
@@ -68,30 +68,23 @@ private:
     std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& src,
         std::uint32_t e = -1) const;
 
-    void radix_sort(
-        std::vector<uint128_t>::iterator begin,
-        std::vector<uint128_t>::iterator end,
-        std::uint8_t num_bits,
-        bool first = true) const;
-
-    std::vector<uint64_t> longest_subsequence(
-        std::vector<uint128_t>::const_iterator begin,
-        std::vector<uint128_t>::const_iterator end,
-        bool increasing = true) const;
-
     struct MinimizerHash {
-        void initialize();
+        MinimizerHash(std::uint16_t num_bints);
+        ~MinimizerHash() = default;
+
+        void clear();
 
         inline std::pair<std::vector<uint128_t>::const_iterator, std::vector<uint128_t>::const_iterator>
-            operator[](std::uint64_t m) const;
+            operator[](std::uint64_t minimizer) const;
 
+        std::uint64_t m_;
         std::vector<std::vector<uint128_t>> minimizers;
         std::vector<std::unordered_map<std::uint64_t, uint128_t>> index;
     };
 
     std::uint8_t k_;
     std::uint8_t w_;
-    std::uint64_t s_;
+    std::int64_t s_;
     MinimizerHash hash_;
     std::unique_ptr<thread_pool::ThreadPool> thread_pool_;
 };

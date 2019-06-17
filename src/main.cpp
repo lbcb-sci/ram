@@ -149,8 +149,9 @@ int main(int argc, char** argv) {
         logger.log("[ram::] parsed sequences in");
         logger.log();
 
-        minimizer_engine.minimize(sequences.begin(), sequences.end(), f);
-            //sequences.begin() + 0.1 * sequences.size(), f);
+        minimizer_engine.minimize(sequences.begin(), sequences.end());
+            //sequences.begin() + 0.1 * sequences.size());
+        minimizer_engine.filter(f);
 
         logger.log("[ram::] created minimizers in");
         logger.log();
