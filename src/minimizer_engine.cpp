@@ -269,7 +269,7 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& src,
             if (diagonal && query_id == target_id) {
                 continue;
             }
-            if (triangle && query_id < target_id) {
+            if (triangle && query_id > target_id) {
                 continue;
             }
 

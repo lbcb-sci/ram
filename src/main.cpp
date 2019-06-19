@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
         std::sort(sequences.begin(), sequences.end(),
             [] (const std::unique_ptr<ram::Sequence>& lhs,
                 const std::unique_ptr<ram::Sequence>& rhs) -> bool {
-                return lhs->data.size() > rhs->data.size();
+                return lhs->data.size() < rhs->data.size();
             });
         for (std::uint32_t i = 0; i < sequences.size(); ++i) {
             sequences[i]->id = i;
@@ -150,7 +150,6 @@ int main(int argc, char** argv) {
         logger.log();
 
         minimizer_engine.minimize(sequences.begin(), sequences.end());
-            //sequences.begin() + 0.1 * sequences.size());
         minimizer_engine.filter(f);
 
         logger.log("[ram::] created minimizers in");
