@@ -12,14 +12,19 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.2";
+static const std::string version = "v0.0.3";
 
 static struct option options[] = {
+    {"kmer-length", required_argument, nullptr, 'k'},
+    {"window-length", required_argument, nullptr, 'w'},
+    {"filter-threshold", required_argument, nullptr, 'f'},
     {"threads", required_argument, nullptr, 't'},
     {"version", no_argument, nullptr, 'v'},
     {"help", no_argument, nullptr, 'h'},
     {nullptr, 0, nullptr, 0}
 };
+
+constexpr std::uint32_t kChunkSize = 1024 * 1024 * 1024; // ~1GB
 
 void help();
 
@@ -53,19 +58,39 @@ void shrinkToFit(std::vector<T>& src, std::uint64_t begin) {
     }
 }
 
+std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {
+
+    if (isSuffix(path, ".fasta")    || isSuffix(path, ".fa") ||
+        isSuffix(path, ".fasta.gz") || isSuffix(path, ".fa.gz")) {
+        return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
+    }
+    if (isSuffix(path, ".fastq")    || isSuffix(path, ".fq") ||
+        isSuffix(path, ".fastq.gz") || isSuffix(path, ".fq.gz")) {
+        return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
+    }
+
+    std::cerr << "[ram::] error: file " << path
+              << " has unsupported format extension (valid extensions: .fasta, "
+              << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!"
+              << std::endl;
+    return nullptr;
+}
+
 int main(int argc, char** argv) {
 
-    std::uint32_t e = 1000;
     std::uint32_t k = 15;
     std::uint32_t w = 5;
-    double f = 0.0001;
+    double f = 0.001;
     std::uint32_t num_threads = 1;
 
     std::vector<std::string> input_paths;
 
     char argument;
-    while ((argument = getopt_long(argc, argv, "t:h", options, nullptr)) != -1) {
+    while ((argument = getopt_long(argc, argv, "k:w:f:t:h", options, nullptr)) != -1) {
         switch (argument) {
+            case 'k': k = atoi(optarg); break;
+            case 'w': w = atoi(optarg); break;
+            case 'f': f = atof(optarg); break;
             case 't': num_threads = atoi(optarg); break;
             case 'v': std::cout << version << std::endl; return 0;
             case 'h': help(); return 0;
@@ -83,127 +108,76 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::unique_ptr<bioparser::Parser<ram::Sequence>> sparser = nullptr;
-
-    if (isSuffix(input_paths[0], ".fasta") || isSuffix(input_paths[0], ".fa") ||
-        isSuffix(input_paths[0], ".fasta.gz") || isSuffix(input_paths[0], ".fa.gz")) {
-        sparser = bioparser::createParser<bioparser::FastaParser, ram::Sequence>(
-            input_paths[0]);
-    } else if (isSuffix(input_paths[0], ".fastq") || isSuffix(input_paths[0], ".fq") ||
-               isSuffix(input_paths[0], ".fastq.gz") || isSuffix(input_paths[0], ".fq.gz")) {
-        sparser = bioparser::createParser<bioparser::FastqParser, ram::Sequence>(
-            input_paths[0]);
-    } else {
-        std::cerr << "[ram::] error: file " << input_paths[0] <<
-            " has unsupported format extension (valid extensions: .fasta, "
-            ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
-            std::endl;
+    std::unique_ptr<bioparser::Parser<ram::Sequence>> tparser = createParser(input_paths[0]);
+    if (tparser == nullptr) {
         return 1;
     }
 
-    std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> tparsers;
+    auto thread_pool = thread_pool::createThreadPool(num_threads);
+    auto logger = logger::Logger();
+    ram::MinimizerEngine minimizer_engine(k, w, num_threads);
+
+    logger.log();
+
+    std::vector<std::unique_ptr<ram::Sequence>> sequences;
+    tparser->parse(sequences, -1);
+
+    logger.log("[ram::] parsed targets in");
+    logger.log();
+
+    minimizer_engine.minimize(sequences.begin(), sequences.end());
+    minimizer_engine.filter(f);
+
+    logger.log("[ram::] created minimizers in");
+
+    std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> sparsers;
 
     if (input_paths.size() > 1) {
         for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
-            if (isSuffix(input_paths[i], ".fasta") || isSuffix(input_paths[i], ".fa") ||
-                isSuffix(input_paths[i], ".fasta.gz") || isSuffix(input_paths[i], ".fa.gz")) {
-                tparsers.emplace_back(bioparser::createParser<bioparser::FastaParser, ram::Sequence>(
-                    input_paths[i]));
-            } else if (isSuffix(input_paths[i], ".fastq") || isSuffix(input_paths[i], ".fq") ||
-                       isSuffix(input_paths[i], ".fastq.gz") || isSuffix(input_paths[i], ".fq.gz")) {
-                tparsers.emplace_back(bioparser::createParser<bioparser::FastqParser, ram::Sequence>(
-                    input_paths[i]));
-            } else {
-                std::cerr << "[ram::] error: file " << input_paths[i] <<
-                    " has unsupported format extension (valid extensions: .fasta, "
-                    ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!" <<
-                    std::endl;
+            sparsers.emplace_back(createParser(input_paths[i]));
+            if (sparsers.back() == nullptr) {
                 return 1;
             }
         }
+    } else {
+        sparsers.emplace_back(createParser(input_paths[0]));
     }
 
-    auto thread_pool = thread_pool::createThreadPool(num_threads);
+    for (const auto& it: sparsers) {
+        while (true) {
+            std::uint32_t l = sequences.size();
 
-    auto logger = logger::Logger();
+            logger.log();
 
-    ram::MinimizerEngine minimizer_engine(k, w, num_threads);
+            bool status = it->parse(sequences, kChunkSize);
 
-    std::vector<std::unique_ptr<ram::Sequence>> sequences;
-    std::uint32_t num_chunks = 0;
-    while (true) {
-        ++num_chunks;
+            logger.log("[ram::] parsed chunk of sequences in");
+            logger.log();
 
-        logger.log();
-
-        bool status = sparser->parse(sequences, -1);
-        std::sort(sequences.begin(), sequences.end(),
-            [] (const std::unique_ptr<ram::Sequence>& lhs,
-                const std::unique_ptr<ram::Sequence>& rhs) -> bool {
-                return lhs->data.size() < rhs->data.size();
-            });
-        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-            sequences[i]->id = i;
-        }
-
-        logger.log("[ram::] parsed sequences in");
-        logger.log();
-
-        minimizer_engine.minimize(sequences.begin(), sequences.end());
-        minimizer_engine.filter(f);
-
-        logger.log("[ram::] created minimizers in");
-        logger.log();
-
-        std::vector<uint8_t> is_valid(sequences.size(), 1);
-
-        std::vector<std::future<void>> thread_futures;
-        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-            thread_futures.emplace_back(thread_pool->submit(
-                [&] (std::uint32_t i) -> void {
-                    auto overlaps = minimizer_engine.map(sequences[i], true, true);
-                    for (const auto& it: overlaps) {
-                        std::uint32_t overhang = std::min(it.t_begin, it.q_begin) +
-                            std::min(sequences[i]->data.size() - it.q_end,
-                            sequences[it.t_id]->data.size() - it.t_end);
-
-                        if (it.t_end - it.t_begin > (it.t_end - it.t_begin + overhang) * 0.875 &&
-                            it.q_end - it.q_begin > (it.q_end - it.q_begin + overhang) * 0.875 &&
-                            sequences[it.t_id]->data.size() - it.t_end >= sequences[i]->data.size() - it.q_end &&
-                            it.t_begin >= it.q_begin) {
-
-                            is_valid[i] = 0;
-                            break;
-                        }
+            std::vector<std::future<void>> thread_futures;
+            for (std::uint32_t i = l; i < sequences.size(); ++i) {
+                thread_futures.emplace_back(thread_pool->submit(
+                    [&] (std::uint32_t i) -> void {
+                        auto overlaps = minimizer_engine.map(sequences[i], true, true);
                     }
-                }
-            , i));
-        }
-        for (const auto& it: thread_futures) {
-            it.wait();
-        }
+                , i));
+            }
+            for (const auto& it: thread_futures) {
+                it.wait();
+            }
 
-        logger.log("[ram::] mapped in");
+            logger.log("[ram::] mapped chunk of sequences in");
+            logger.log();
 
-        for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-            if (!is_valid[i]) {
-                sequences[i].reset();
+            sequences.resize(l);
+
+            if (!status) {
+                break;
             }
         }
-        shrinkToFit(sequences, 0);
-
-        if (!status) {
-            break;
-        }
     }
 
-    std::cerr << "[ram::] num uncontained sequences = " << sequences.size() << std::endl;
     logger.total("[ram::] total time");
-
-    /*for (const auto& it: sequences) {
-        std::cout << ">" << it->name << std::endl;
-        std::cout << it->data << std::endl;
-    }*/
 
     return 0;
 }
@@ -217,6 +191,15 @@ void help() {
         "        containing sequences\n"
         "\n"
         "    options:\n"
+        "        -k, --kmer-length <int>\n"
+        "            default: 15\n"
+        "            length of minimizers\n"
+        "        -w, --window-length <int>\n"
+        "            default: 5\n"
+        "            window length from which minimizers are found\n"
+        "        -f, --filter-threshold <float>\n"
+        "            default: 0.001\n"
+        "            threshold for ignoring most frequent minimizers\n"
         "        -t, --threads <int>\n"
         "            default: 1\n"
         "            number of threads\n"
