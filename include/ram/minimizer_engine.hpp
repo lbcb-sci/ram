@@ -27,7 +27,7 @@ struct Sequence {
         const char*, std::uint32_t);
     ~Sequence() = default;
 
-    static std::uint64_t sequence_id;
+    static std::uint64_t num_objects;
 
     std::uint64_t id;
     std::string name;

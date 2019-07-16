@@ -131,6 +131,7 @@ int main(int argc, char** argv) {
     logger.log("[ram::] created minimizers in");
 
     std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> sparsers;
+    std::vector<bool> is_equal_sparser;
 
     if (input_paths.size() > 1) {
         for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
@@ -138,36 +139,58 @@ int main(int argc, char** argv) {
             if (sparsers.back() == nullptr) {
                 return 1;
             }
+            is_equal_sparser.emplace_back(input_paths[0].compare(input_paths[i]) == 0 ?
+                true : false);
         }
     } else {
         sparsers.emplace_back(createParser(input_paths[0]));
+        is_equal_sparser.emplace_back(true);
     }
 
-    for (const auto& it: sparsers) {
+    for (std::uint32_t i = 0; i < sparsers.size(); ++i) {
+
+        ram::Sequence::num_objects = is_equal_sparser[i] ? 0 : sequences.size();
+
         while (true) {
             std::uint32_t l = sequences.size();
 
             logger.log();
 
-            bool status = it->parse(sequences, kChunkSize);
+            bool status = sparsers[i]->parse(sequences, kChunkSize);
 
             logger.log("[ram::] parsed chunk of sequences in");
             logger.log();
 
-            std::vector<std::future<void>> thread_futures;
-            for (std::uint32_t i = l; i < sequences.size(); ++i) {
+            std::vector<std::future<std::vector<ram::Overlap>>> thread_futures;
+            for (std::uint32_t j = l; j < sequences.size(); ++j) {
                 thread_futures.emplace_back(thread_pool->submit(
-                    [&] (std::uint32_t i) -> void {
-                        auto overlaps = minimizer_engine.map(sequences[i], true, true);
+                    [&] (std::uint32_t j) -> std::vector<ram::Overlap> {
+                        return minimizer_engine.map(sequences[j], is_equal_sparser[i],
+                            is_equal_sparser[i]);
                     }
-                , i));
+                , j));
             }
-            for (const auto& it: thread_futures) {
-                it.wait();
+            for (std::uint32_t j = 0; j < thread_futures.size(); ++j) {
+                thread_futures[j].wait();
+                auto overlaps = thread_futures[j].get();
+                for (const auto& it: overlaps) {
+                    std::cout << sequences[l + j]->name << "\t"
+                              << sequences[l + j]->data.size() << "\t"
+                              << it.q_begin << "\t"
+                              << it.q_end << "\t"
+                              << (it.strand ? "+" : "-") << "\t"
+                              << sequences[it.t_id]->name << "\t"
+                              << sequences[it.t_id]->data.size() << "\t"
+                              << it.t_begin << "\t"
+                              << it.t_end << "\t"
+                              << 0 << "\t" // dummy value
+                              << 0 << "\t" // dummy value
+                              << 0 << "\t" // dummy value
+                              << std::endl;
+                }
             }
 
             logger.log("[ram::] mapped chunk of sequences in");
-            logger.log();
 
             sequences.resize(l);
 

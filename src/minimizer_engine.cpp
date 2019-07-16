@@ -117,7 +117,7 @@ std::vector<uint64_t> longest_subsequence(std::vector<uint128_t>::const_iterator
 
 Sequence::Sequence(const char* name, std::uint32_t name_length,
     const char* data, std::uint32_t data_length)
-        : id(sequence_id++), name(name, name_length), data(data, data_length) {
+        : id(num_objects++), name(name, name_length), data(data, data_length) {
 }
 
 Sequence::Sequence(const char* name, std::uint32_t name_length,
@@ -132,7 +132,7 @@ Overlap::Overlap(std::uint64_t t_id, std::uint32_t t_begin, std::uint32_t t_end,
         q_end(q_end), strand(strand) {
 }
 
-std::uint64_t Sequence::sequence_id = 0;
+std::uint64_t Sequence::num_objects = 0;
 
 MinimizerEngine::MinimizerHash::MinimizerHash(std::uint16_t num_bins)
         : m_(num_bins - 1), minimizers(num_bins), index(num_bins) {
