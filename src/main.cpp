@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.3";
+static const std::string version = "v0.0.4";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
     logger.log("[ram::] created minimizers in");
 
     std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> sparsers;
-    std::vector<bool> is_equal_sparser;
+    std::vector<std::uint8_t> is_equal_sparser;
 
     if (input_paths.size() > 1) {
         for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
