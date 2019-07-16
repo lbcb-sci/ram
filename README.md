@@ -73,4 +73,4 @@ For additional information, help and bug reports please send an email to one of 
 
 ## Acknowledgement
 
-This work has been supported in part by the European Regional Development Fund under the grant KK.01.1.1.01.0009 (DATACROSS).
+This work has been supported in part by the European Regional Development Fund under the grant KK.01.1.1.01.0009 (DATACROSS) and in part by the Croatian Science Foundation under the project Single genome and metagenome assembly (IP-2018-01-5886).
