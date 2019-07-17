@@ -1,6 +1,6 @@
 # Ram
 
-[![Build status for c++/clang++](https://travis-ci.org/jmaricb/RAM.svg?branch=master)](https://travis-ci.org/jmaricb/RAM)
+[![Build status for c++/clang++](https://travis-ci.org/lbcb-sci/ram.svg?branch=master)](https://travis-ci.org/lbcb-sci/ram)
 
 Mapping module for raw de novo genome assembly of long uncorrected reads.
 
