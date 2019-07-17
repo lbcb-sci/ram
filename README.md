@@ -18,7 +18,7 @@ Ram is a [Minimap](https://github.com/lh3/minimap) clone implemented as a C++ li
 CmakeLists is provided in the project root folder. By running the following commands:
 
 ```bash
-git clone --recursive https://github.com/jmaricb/ram ram
+git clone --recursive https://github.com/lbcb-sci/ram ram
 cd ram
 mkdir build
 cd build
