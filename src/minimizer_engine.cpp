@@ -4,6 +4,8 @@
  * @brief MinimizerEngine class source file
  */
 
+#include <cstdlib>
+
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
@@ -292,8 +294,7 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& src,
     std::vector<Overlap> dst;
 
     for (std::uint64_t i = 1, j = 0; i < matches.size(); ++i) {
-        if ((matches[i].first >> 32) != (matches[i - 1].first >> 32) ||
-            (matches[i].first << 32 >> 32) - (matches[i - 1].first << 32 >> 32) > 500) {
+        if (matches[i].first - matches[i - 1].first > 500) {
 
             if (i - j < 4) {
                 j = i;
@@ -303,13 +304,49 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& src,
             radix_sort(matches.begin() + j, matches.begin() + i, 64,
                 uint128_t_second);
 
+            std::vector<std::uint8_t> is_valid(i - j, 0);
+            for (std::uint64_t k = j; k < i; ++k) {
+                std::int64_t target_pos = matches[k].second >> 32;
+                for (std::uint64_t l = k + 1; l < i; ++l) {
+                    if (std::abs(static_cast<std::int64_t>(matches[l].second >> 32) - target_pos) < 1000) {
+                        is_valid[k - j] = 1;
+                        is_valid[l - j] = 1;
+                        break;
+                    }
+                }
+            }
+
+            std::uint64_t k = j;
+            for (std::uint64_t l = k; k < i; ++k) {
+                if (is_valid[k - j] == 1) {
+                    continue;
+                }
+
+                l = std::max(l, k);
+                while (l < i && is_valid[l - j] == 0) {
+                    ++l;
+                }
+
+                if (l >= i) {
+                    break;
+                } else if (k != l) {
+                    std::swap(matches[k], matches[l]);
+                    std::swap(is_valid[k - j], is_valid[l - j]);
+                }
+            }
+
+            if (k - j < 4) {
+                j = i;
+                continue;
+            }
+
             std::vector<std::uint64_t> indices;
             if (matches[i - 1].first >> 32 & 1) {
                 indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + i, std::less<std::uint64_t>());
+                    matches.begin() + k, std::less<std::uint64_t>());
             } else {
                 indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + i, std::greater<std::uint64_t>());
+                    matches.begin() + k, std::greater<std::uint64_t>());
             }
 
             if (indices.size() < 4) {

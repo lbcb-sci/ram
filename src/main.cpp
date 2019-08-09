@@ -174,6 +174,9 @@ int main(int argc, char** argv) {
                 thread_futures[j].wait();
                 auto overlaps = thread_futures[j].get();
                 for (const auto& it: overlaps) {
+                    if (std::max(it.q_end - it.q_begin, it.t_end - it.t_begin) < 100) {
+                        continue;
+                    }
                     std::cout << sequences[l + j]->name << "\t"
                               << sequences[l + j]->data.size() << "\t"
                               << it.q_begin << "\t"
