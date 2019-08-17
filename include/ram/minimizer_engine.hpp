@@ -24,7 +24,7 @@ struct Sequence {
         const char* data, std::uint32_t data_length);
     Sequence(const char* name, std::uint32_t name_length,
         const char* data, std::uint32_t data_length,
-        const char*, std::uint32_t);
+        const char* quality, std::uint32_t quality_length);
     ~Sequence() = default;
 
     static std::uint64_t num_objects;
@@ -32,6 +32,7 @@ struct Sequence {
     std::uint64_t id;
     std::string name;
     std::string data;
+    std::string quality;
 };
 
 struct Overlap {
@@ -47,12 +48,14 @@ struct Overlap {
     std::uint32_t strand;
 };
 
+class MinimizerEngine;
+std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
+    std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool);
+
 using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
 
 class MinimizerEngine {
 public:
-    MinimizerEngine(std::uint8_t k, std::uint8_t w,
-        std::uint32_t num_threads = 1);
     ~MinimizerEngine() = default;
 
     void minimize(const std::vector<std::unique_ptr<Sequence>>& src);
@@ -64,7 +67,15 @@ public:
 
     std::vector<Overlap> map(const std::unique_ptr<Sequence>& src,
         bool diagonal, bool triangle, std::uint32_t e = -1) const;
+
+    friend std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
+        std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool);
 private:
+    MinimizerEngine(std::uint8_t k, std::uint8_t w,
+        std::shared_ptr<thread_pool::ThreadPool> thread_pool);
+    MinimizerEngine(const MinimizerEngine&) = delete;
+    const MinimizerEngine& operator=(const MinimizerEngine&) = delete;
+
     std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& src,
         std::uint32_t e = -1) const;
 
@@ -86,7 +97,7 @@ private:
     std::uint8_t w_;
     std::int64_t s_;
     MinimizerHash hash_;
-    std::unique_ptr<thread_pool::ThreadPool> thread_pool_;
+    std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
 };
 
 }

@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.5";
+static const std::string version = "v0.0.6";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -113,20 +113,37 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    auto thread_pool = thread_pool::createThreadPool(num_threads);
+    std::shared_ptr<thread_pool::ThreadPool> thread_pool;
+    try {
+        thread_pool = thread_pool::createThreadPool(num_threads);
+    } catch (std::invalid_argument& exception) {
+        std::cerr << exception.what() << std::endl;
+        return 1;
+    }
+
     auto logger = logger::Logger();
-    ram::MinimizerEngine minimizer_engine(k, w, num_threads);
+    auto minimizer_engine = ram::createMinimizerEngine(k, w, thread_pool);
 
     logger.log();
 
     std::vector<std::unique_ptr<ram::Sequence>> sequences;
-    tparser->parse(sequences, -1);
+    try {
+        tparser->parse(sequences, -1);
+    } catch (std::invalid_argument& exception) {
+        std::cerr << exception.what() << std::endl;
+        return 1;
+    }
+
+    if (sequences.size() == 0) {
+        std::cerr << "[ram::] empty sequence file" << std::endl;
+        return 1;
+    }
 
     logger.log("[ram::] parsed targets in");
     logger.log();
 
-    minimizer_engine.minimize(sequences.begin(), sequences.end());
-    minimizer_engine.filter(f);
+    minimizer_engine->minimize(sequences.begin(), sequences.end());
+    minimizer_engine->filter(f);
 
     logger.log("[ram::] created minimizers in");
 
@@ -156,7 +173,13 @@ int main(int argc, char** argv) {
 
             logger.log();
 
-            bool status = sparsers[i]->parse(sequences, kChunkSize);
+            bool status;
+            try {
+                status = sparsers[i]->parse(sequences, kChunkSize);
+            } catch (std::invalid_argument& exception) {
+                std::cerr << exception.what() << std::endl;
+                return 1;
+            }
 
             logger.log("[ram::] parsed chunk of sequences in");
             logger.log();
@@ -165,7 +188,7 @@ int main(int argc, char** argv) {
             for (std::uint32_t j = l; j < sequences.size(); ++j) {
                 thread_futures.emplace_back(thread_pool->submit(
                     [&] (std::uint32_t j) -> std::vector<ram::Overlap> {
-                        return minimizer_engine.map(sequences[j], is_equal_sparser[i],
+                        return minimizer_engine->map(sequences[j], is_equal_sparser[i],
                             is_equal_sparser[i]);
                     }
                 , j));

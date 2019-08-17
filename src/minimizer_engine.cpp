@@ -119,13 +119,15 @@ std::vector<uint64_t> longest_subsequence(std::vector<uint128_t>::const_iterator
 
 Sequence::Sequence(const char* name, std::uint32_t name_length,
     const char* data, std::uint32_t data_length)
-        : id(num_objects++), name(name, name_length), data(data, data_length) {
+        : id(num_objects++), name(name, name_length), data(data, data_length),
+        quality() {
 }
 
 Sequence::Sequence(const char* name, std::uint32_t name_length,
     const char* data, std::uint32_t data_length,
-    const char*, std::uint32_t)
-        : Sequence(name, name_length, data, data_length) {
+    const char* quality, std::uint32_t quality_length)
+        : id(num_objects++), name(name, name_length), data(data, data_length),
+        quality(quality, quality_length) {
 }
 
 Overlap::Overlap(std::uint64_t t_id, std::uint32_t t_begin, std::uint32_t t_end,
@@ -161,10 +163,21 @@ inline std::pair<std::vector<uint128_t>::const_iterator, std::vector<uint128_t>:
         minimizers[bin].begin() + it->second.second);
 }
 
+std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
+    std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool) {
+
+    if (thread_pool == nullptr) {
+        throw std::invalid_argument("[ram::createMinimizerEngine] error: "
+            "thread_pool is nullptr!");
+    }
+
+    return std::unique_ptr<MinimizerEngine>(new MinimizerEngine(k, w, thread_pool));
+}
+
 MinimizerEngine::MinimizerEngine(std::uint8_t k, std::uint8_t w,
-    std::uint32_t num_threads)
+    std::shared_ptr<thread_pool::ThreadPool> thread_pool)
         : k_(k), w_(w), s_(-1), hash_(1U << std::min(14, 2 * k)),
-        thread_pool_(thread_pool::createThreadPool(num_threads)) {
+        thread_pool_(thread_pool) {
 }
 
 void MinimizerEngine::minimize(const std::vector<std::unique_ptr<Sequence>>& src) {
