@@ -1,10 +1,11 @@
-
 /*!
 * @file ram.hpp
 *
-* @brief ram header file which encapsulates the implementation
+* @brief Ram header file which encapsulates the implementation
 */
 
 #pragma once
 
 #include "minimizer_engine.hpp"
+#include "overlap.hpp"
+#include "sequence.hpp"

@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.6";
+static const std::string version = "v0.0.7";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -23,40 +23,6 @@ static struct option options[] = {
     {"help", no_argument, nullptr, 'h'},
     {nullptr, 0, nullptr, 0}
 };
-
-class Sequence {
-public:
-    Sequence(const char* name, std::uint32_t name_length,
-        const char* data, std::uint32_t data_length)
-            : id_(num_objects++), name_(name, name_length), data_(data, data_length) {
-    }
-    Sequence(const char* name, std::uint32_t name_length,
-        const char* data, std::uint32_t data_length,
-        const char*, std::uint32_t)
-            : Sequence(name, name_length, data, data_length) {
-    }
-    ~Sequence() = default;
-
-    uint32_t id() const {
-        return id_;
-    }
-
-    const std::string& name() const {
-        return name_;
-    }
-
-    const std::string& data() const {
-        return data_;
-    }
-
-    static std::uint32_t num_objects;
-private:
-    std::uint32_t id_;
-    std::string name_;
-    std::string data_;
-};
-
-std::uint32_t Sequence::num_objects = 0;
 
 constexpr std::uint32_t kChunkSize = 1024 * 1024 * 1024; // ~1GB
 
@@ -92,15 +58,15 @@ void shrinkToFit(std::vector<T>& src, std::uint64_t begin) {
     }
 }
 
-std::unique_ptr<bioparser::Parser<Sequence>> createParser(const std::string& path) {
+std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {
 
     if (isSuffix(path, ".fasta")    || isSuffix(path, ".fa") ||
         isSuffix(path, ".fasta.gz") || isSuffix(path, ".fa.gz")) {
-        return bioparser::createParser<bioparser::FastaParser, Sequence>(path);
+        return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
     }
     if (isSuffix(path, ".fastq")    || isSuffix(path, ".fq") ||
         isSuffix(path, ".fastq.gz") || isSuffix(path, ".fq.gz")) {
-        return bioparser::createParser<bioparser::FastqParser, Sequence>(path);
+        return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
     }
 
     std::cerr << "[ram::] error: file " << path
@@ -142,7 +108,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::unique_ptr<bioparser::Parser<Sequence>> tparser = createParser(input_paths[0]);
+    std::unique_ptr<bioparser::Parser<ram::Sequence>> tparser =
+        createParser(input_paths[0]);
     if (tparser == nullptr) {
         return 1;
     }
@@ -160,7 +127,7 @@ int main(int argc, char** argv) {
 
     logger.log();
 
-    std::vector<std::unique_ptr<Sequence>> sequences;
+    std::vector<std::unique_ptr<ram::Sequence>> sequences;
     try {
         tparser->parse(sequences, -1);
     } catch (std::invalid_argument& exception) {
@@ -180,7 +147,7 @@ int main(int argc, char** argv) {
 
     logger.log("[ram::] created minimizers in");
 
-    std::vector<std::unique_ptr<bioparser::Parser<Sequence>>> sparsers;
+    std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> sparsers;
     std::vector<std::uint8_t> is_equal_sparser;
 
     if (input_paths.size() > 1) {
@@ -199,7 +166,7 @@ int main(int argc, char** argv) {
 
     for (std::uint32_t i = 0; i < sparsers.size(); ++i) {
 
-        Sequence::num_objects = is_equal_sparser[i] ? 0 : sequences.size();
+        ram::Sequence::num_objects = is_equal_sparser[i] ? 0 : sequences.size();
 
         while (true) {
             std::uint32_t l = sequences.size();
@@ -230,22 +197,18 @@ int main(int argc, char** argv) {
                 thread_futures[j].wait();
                 auto overlaps = thread_futures[j].get();
                 for (const auto& it: overlaps) {
-                    if (std::max(it.q_end - it.q_begin, it.t_end - it.t_begin) < 100) {
-                        continue;
-                    }
-                    std::cout << sequences[l + j]->name() << "\t"
-                              << sequences[l + j]->data().size() << "\t"
+                    std::cout << sequences[l + j]->name << "\t"
+                              << sequences[l + j]->data.size() << "\t"
                               << it.q_begin << "\t"
                               << it.q_end << "\t"
                               << (it.strand ? "+" : "-") << "\t"
-                              << sequences[it.t_id]->name() << "\t"
-                              << sequences[it.t_id]->data().size() << "\t"
+                              << sequences[it.t_id]->name << "\t"
+                              << sequences[it.t_id]->data.size() << "\t"
                               << it.t_begin << "\t"
                               << it.t_end << "\t"
-                              << 0 << "\t" // dummy value
-                              << 0 << "\t" // dummy value
-                              << 0 << "\t" // dummy value
-                              << "cm:i:" << it.minimizers
+                              << it.matches << "\t"
+                              << std::max(it.q_end - it.q_begin, it.t_end - it.t_begin)<< "\t"
+                              << 255
                               << std::endl;
                 }
             }

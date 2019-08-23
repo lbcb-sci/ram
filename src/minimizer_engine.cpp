@@ -9,11 +9,14 @@
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
+#include <functional>
 #include <queue>
 
 #include "thread_pool/thread_pool.hpp"
 
 #include "ram/minimizer_engine.hpp"
+#include "ram/overlap.hpp"
+#include "ram/sequence.hpp"
 
 namespace ram {
 
@@ -35,6 +38,8 @@ std::vector<std::uint8_t> kCoder = {
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
 };
+
+std::uint32_t Sequence::num_objects = 0;
 
 inline std::uint64_t uint128_t_first(const uint128_t& src) {
     return src.first;
@@ -117,31 +122,6 @@ std::vector<uint64_t> longest_subsequence(std::vector<uint128_t>::const_iterator
     return dst;
 }
 
-MinimizerEngine::MinimizerHash::MinimizerHash(std::uint16_t num_bins)
-        : m_(num_bins - 1), minimizers(num_bins), index(num_bins) {
-}
-
-void MinimizerEngine::MinimizerHash::clear() {
-    for (auto& it: minimizers) {
-        it.clear();
-    }
-    for (auto& it: index) {
-        it.clear();
-    }
-}
-
-inline std::pair<std::vector<uint128_t>::const_iterator, std::vector<uint128_t>::const_iterator>
-    MinimizerEngine::MinimizerHash::operator[](std::uint64_t minimizer) const {
-
-    std::uint32_t bin = minimizer & m_;
-    auto it = index[bin].find(minimizer);
-    if (it == index[bin].end()) {
-        return std::make_pair(minimizers.front().begin(), minimizers.front().begin());
-    }
-    return std::make_pair(minimizers[bin].begin() + it->second.first,
-        minimizers[bin].begin() + it->second.second);
-}
-
 std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
     std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool) {
 
@@ -163,41 +143,77 @@ std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
 
 MinimizerEngine::MinimizerEngine(std::uint8_t k, std::uint8_t w,
     std::shared_ptr<thread_pool::ThreadPool> thread_pool)
-        : k_(k), w_(w), o_(-1), hash_(1U << std::min(14, 2 * k)),
-        thread_pool_(thread_pool) {
+        : k_(k), w_(w), o_(-1), minimizers_(1U << std::min(14, 2 * k)),
+        index_(minimizers_.size()), thread_pool_(thread_pool) {
 }
 
-void MinimizerEngine::transform(std::vector<std::vector<uint128_t>>& minimizers,
+void MinimizerEngine::minimize(
+    const std::vector<std::unique_ptr<Sequence>>& sequences,
     double f) {
 
-    for (std::uint64_t i = 0; i < minimizers.size(); ++i) {
-        for (const auto& it: minimizers[i]) {
-            hash_.minimizers[it.first & hash_.m_].emplace_back(it);
-        }
-        std::vector<uint128_t>().swap(minimizers[i]);
+    minimize(sequences.begin(), sequences.end(), f);
+}
+
+void MinimizerEngine::minimize(
+    typename std::vector<std::unique_ptr<Sequence>>::const_iterator begin,
+    typename std::vector<std::unique_ptr<Sequence>>::const_iterator end,
+    double f) {
+
+    for (auto& it: minimizers_) {
+        it.clear();
+    }
+    for (auto& it: index_) {
+        it.clear();
     }
 
+    if (begin >= end) {
+        return;
+    }
+
+    std::vector<std::vector<uint128_t>> storage(end - begin);
     std::vector<std::future<void>> thread_futures;
-    for (std::uint32_t i = 0; i < hash_.minimizers.size(); ++i) {
-        if (hash_.minimizers[i].empty()) {
+    for (auto it = begin; it != end; ++it) {
+        thread_futures.emplace_back(thread_pool_->submit(
+            [&] (std::vector<std::unique_ptr<Sequence>>::const_iterator it) -> void {
+                storage[it - begin] = minimize((*it));
+            }
+        , it));
+    }
+    for (const auto& it: thread_futures) {
+        it.wait();
+    }
+    thread_futures.clear();
+
+    std::uint64_t mask = minimizers_.size() - 1;
+
+    for (std::uint64_t i = 0; i < storage.size(); ++i) {
+        for (const auto& it: storage[i]) {
+            minimizers_[it.first & mask].emplace_back(it);
+        }
+        std::vector<uint128_t>().swap(storage[i]);
+    }
+    std::vector<std::vector<uint128_t>>().swap(storage);
+
+    for (std::uint32_t i = 0; i < minimizers_.size(); ++i) {
+        if (minimizers_[i].empty()) {
             continue;
         }
 
         thread_futures.emplace_back(thread_pool_->submit(
             [&] (std::uint32_t i) -> void {
-                auto& minimizers = hash_.minimizers[i];
-                auto& index = hash_.index[i];
+                auto& minimizers = minimizers_[i];
+                auto& index = index_[i];
 
                 radix_sort(minimizers.begin(), minimizers.end(), k_ * 2,
                     uint128_t_first);
 
                 for (std::uint64_t j = 0, count = 0; j < minimizers.size(); ++j) {
                     if (j > 0 && minimizers[j - 1].first != minimizers[j].first) {
-                        index[minimizers[j - 1].first] = std::make_pair(j - count, j);
+                        index[minimizers[j - 1].first] = std::make_pair(j - count, count);
                         count = 0;
                     }
                     if (j == minimizers.size() - 1) {
-                        index[minimizers[j].first] = std::make_pair(j - count, j + 1);
+                        index[minimizers[j].first] = std::make_pair(j - count, count + 1);
                     }
                     ++count;
                 }
@@ -215,42 +231,51 @@ void MinimizerEngine::transform(std::vector<std::vector<uint128_t>>& minimizers,
     }
 
     std::vector<std::uint64_t> occurrences;
-    for (std::uint64_t i = 0; i < hash_.index.size(); ++i) {
-        for (const auto& it: hash_.index[i]) {
-            occurrences.emplace_back(it.second.second - it.second.first);
+    for (std::uint64_t i = 0; i < index_.size(); ++i) {
+        for (const auto& it: index_[i]) {
+            occurrences.emplace_back(it.second.second);
         }
     }
     std::nth_element(occurrences.begin(), occurrences.begin() +
         (1 - f) * occurrences.size(), occurrences.end());
-    o_ = occurrences[(1 - f) * occurrences.size()];
+    o_ = occurrences[(1 - f) * occurrences.size()] + 1;
 }
 
-std::vector<Overlap> MinimizerEngine::match(std::vector<uint128_t>& minimizers,
-    bool d, bool t) const {
+std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& sequence,
+    bool d, bool t, std::uint32_t e) const {
+
+    auto minimizers = minimize(sequence, e);
 
     std::vector<Overlap> dst;
     if (minimizers.empty()) {
         return dst;
     }
 
-    radix_sort(minimizers.begin(), minimizers.end(), k_ * 2, uint128_t_first);
-
-    std::uint64_t q_id = minimizers.front().second >> 32;
-
+    std::uint64_t mask = minimizers_.size() - 1;
     std::vector<uint128_t> matches;
+
     for (const auto& it: minimizers) {
-        auto m = hash_[it.first];
-        if (static_cast<std::uint64_t>(m.second - m.first) >= o_) {
+
+        std::uint32_t bin = it.first & mask;
+        auto info = index_[bin].find(it.first);
+        if (info == index_[bin].end()) {
             continue;
         }
-        for (auto jt = m.first; jt != m.second; ++jt) {
+        if (info->second.second > o_) {
+            continue;
+        }
+
+        auto jt = minimizers_[bin].begin() + info->second.first;
+        auto end = jt + info->second.second;
+
+        for (; jt != end; ++jt) {
 
             std::uint64_t t_id = jt->second >> 32;
 
-            if (d && q_id == t_id) {
+            if (d && sequence->id == t_id) {
                 continue;
             }
-            if (t && q_id > t_id) {
+            if (t && sequence->id > t_id) {
                 continue;
             }
 
@@ -258,10 +283,11 @@ std::vector<Overlap> MinimizerEngine::match(std::vector<uint128_t>& minimizers,
             std::uint64_t q_pos = it.second << 32 >> 33;
             std::uint64_t t_pos = jt->second << 32 >> 33;
 
-            std::uint64_t diff = !strand ? t_pos + q_pos : (1ULL << 31) + t_pos - q_pos;
+            std::uint64_t diff = !strand ? t_pos + q_pos :
+                (1ULL << 31) + t_pos - q_pos;
 
             matches.emplace_back((((t_id << 1) | strand) << 32) | diff,
-                (t_pos << 32) | q_pos);
+                (q_pos << 32) | t_pos);
         }
     }
 
@@ -279,49 +305,13 @@ std::vector<Overlap> MinimizerEngine::match(std::vector<uint128_t>& minimizers,
             radix_sort(matches.begin() + j, matches.begin() + i, 64,
                 uint128_t_second);
 
-            std::vector<std::uint8_t> is_valid(i - j, 0);
-            for (std::uint64_t k = j; k < i; ++k) {
-                std::int64_t t_pos = matches[k].second >> 32;
-                for (std::uint64_t l = k + 1; l < i; ++l) {
-                    if (std::abs(static_cast<std::int64_t>(matches[l].second >> 32) - t_pos) < 1000) {
-                        is_valid[k - j] = 1;
-                        is_valid[l - j] = 1;
-                        break;
-                    }
-                }
-            }
-
-            std::uint64_t k = j;
-            for (std::uint64_t l = k; k < i; ++k) {
-                if (is_valid[k - j] == 1) {
-                    continue;
-                }
-
-                l = std::max(l, k);
-                while (l < i && is_valid[l - j] == 0) {
-                    ++l;
-                }
-
-                if (l >= i) {
-                    break;
-                } else if (k != l) {
-                    std::swap(matches[k], matches[l]);
-                    std::swap(is_valid[k - j], is_valid[l - j]);
-                }
-            }
-
-            if (k - j < 4) {
-                j = i;
-                continue;
-            }
-
             std::vector<std::uint64_t> indices;
             if (matches[i - 1].first >> 32 & 1) {
                 indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + k, std::less<std::uint64_t>());
+                    matches.begin() + i, std::less<std::uint64_t>());
             } else {
                 indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + k, std::greater<std::uint64_t>());
+                    matches.begin() + i, std::greater<std::uint64_t>());
             }
 
             if (indices.size() < 4) {
@@ -330,16 +320,40 @@ std::vector<Overlap> MinimizerEngine::match(std::vector<uint128_t>& minimizers,
             }
 
             bool strand = matches[i - 1].first >> 32 & 1;
-            dst.emplace_back(q_id,
+            std::uint32_t q_matches = 0, q_begin = 0, q_end = 0;
+            std::uint32_t t_matches = 0, t_begin = 0, t_end = 0;
+            for (std::uint32_t k = 0; k < indices.size(); ++k) {
+                std::uint32_t q_pos = matches[j + indices[k]].second >> 32;
+                if (q_pos > q_end) {
+                    q_matches += q_end - q_begin;
+                    q_begin = q_pos;
+                }
+                q_end = q_pos + k_;
+
+                std::uint32_t t_pos = matches[j + indices[k]].second << 32 >> 32;
+                t_pos = strand ? t_pos : (1U << 31) - (t_pos + k_ - 1);
+                if (t_pos > t_end) {
+                    t_matches += t_end - t_begin;
+                    t_begin = t_pos;
+                }
+                t_end = t_pos + k_;
+            }
+            q_matches += q_end - q_begin;
+            t_matches += t_end - t_begin;
+            if (q_matches < 100 || t_matches < 100) {
+                j = i;
+                continue;
+            }
+
+            dst.emplace_back(sequence->id,
+                matches[j + indices.front()].second >> 32,
+                k_ + (matches[j + indices.back()].second >> 32),
+                matches[i - 1].first >> 33,
                 strand ? matches[j + indices.front()].second << 32 >> 32 :
                     matches[j + indices.back()].second << 32 >> 32,
                 k_ + (strand ? matches[j + indices.back()].second << 32 >> 32 :
                     matches[j + indices.front()].second << 32 >> 32),
-                matches[i - 1].first >> 33,
-                matches[j + indices.front()].second >> 32,
-                k_ + (matches[j + indices.back()].second >> 32),
-                strand,
-                indices.size());
+                strand, std::min(q_matches, t_matches));
 
             j = i;
         }
@@ -348,16 +362,16 @@ std::vector<Overlap> MinimizerEngine::match(std::vector<uint128_t>& minimizers,
     return dst;
 }
 
-std::vector<uint128_t> MinimizerEngine::minimize(std::uint32_t _id,
-    const std::string& data, std::uint32_t e) const {
+std::vector<uint128_t> MinimizerEngine::minimize(
+    const std::unique_ptr<Sequence>& sequence, std::uint32_t e) const {
 
     std::vector<uint128_t> dst;
-    if (data.size() < k_) {
+    if (sequence->data.size() < k_) {
         return dst;
     }
 
-    e = std::min(e, static_cast<std::uint32_t>(data.size()));
-    std::uint32_t b = data.size() - e;
+    e = std::min(e, static_cast<std::uint32_t>(sequence->data.size()));
+    std::uint32_t b = sequence->data.size() - e;
     std::swap(b, e);
 
     std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
@@ -377,10 +391,11 @@ std::vector<uint128_t> MinimizerEngine::minimize(std::uint32_t _id,
         }
     };
 
-    std::uint64_t id = static_cast<std::uint64_t>(_id) << 32;
+    std::uint64_t id = static_cast<std::uint64_t>(sequence->id) << 32;
+    std::uint64_t is_stored = 1ULL << 63;
 
-    for (std::uint32_t i = 0; i < data.size(); ++i) {
-        std::uint64_t c = kCoder[data[i]];
+    for (std::uint32_t i = 0; i < sequence->data.size(); ++i) {
+        std::uint64_t c = kCoder[sequence->data[i]];
         if (c == 255) {
             throw std::invalid_argument("[ram::MinimizerEngine::minimize] error: "
                 "invalid character!");
@@ -389,15 +404,23 @@ std::vector<uint128_t> MinimizerEngine::minimize(std::uint32_t _id,
         reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
         if (i >= k_ - 1U) {
             if (minimizer < reverse_minimizer) {
-                window_add(minimizer, id | ((i - (k_ - 1U)) << 1 | 0));
+                window_add(std::hash<std::uint64_t>{}(minimizer), (i - (k_ - 1U)) << 1 | 0);
             } else if (minimizer > reverse_minimizer) {
-                window_add(reverse_minimizer, id | ((i - (k_ - 1U)) << 1 | 1));
+                window_add(std::hash<std::uint64_t>{}(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
             }
         }
         if (i >= (k_ - 1U) + (w_ - 1U)) {
-            if ((dst.empty() || dst.back().second != window.front().second) &&
-                (i < b || i - (k_ - 1U) >= e)) {
-                dst.emplace_back(window.front());
+            if (i < b || i - (k_ - 1U) >= e) {
+                for (auto it = window.begin(); it != window.end(); ++it) {
+                    if (it->first != window.front().first) {
+                        break;
+                    }
+                    if (it->second & is_stored) {
+                        continue;
+                    }
+                    dst.emplace_back(it->first, id | it->second);
+                    it->second |= is_stored;
+                }
             }
             window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
         }
