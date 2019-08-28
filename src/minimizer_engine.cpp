@@ -148,16 +148,14 @@ MinimizerEngine::MinimizerEngine(std::uint8_t k, std::uint8_t w,
 }
 
 void MinimizerEngine::minimize(
-    const std::vector<std::unique_ptr<Sequence>>& sequences,
-    double f) {
+    const std::vector<std::unique_ptr<Sequence>>& sequences) {
 
-    minimize(sequences.begin(), sequences.end(), f);
+    minimize(sequences.begin(), sequences.end());
 }
 
 void MinimizerEngine::minimize(
     typename std::vector<std::unique_ptr<Sequence>>::const_iterator begin,
-    typename std::vector<std::unique_ptr<Sequence>>::const_iterator end,
-    double f) {
+    typename std::vector<std::unique_ptr<Sequence>>::const_iterator end) {
 
     for (auto& it: minimizers_) {
         it.clear();
@@ -224,6 +222,9 @@ void MinimizerEngine::minimize(
         it.wait();
     }
     thread_futures.clear();
+}
+
+void MinimizerEngine::filter(double f) {
 
     if (f == 0) {
         o_ = -1;

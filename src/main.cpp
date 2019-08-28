@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.7";
+static const std::string version = "v0.0.8";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -143,7 +143,8 @@ int main(int argc, char** argv) {
     logger.log("[ram::] parsed targets in");
     logger.log();
 
-    minimizer_engine->minimize(sequences, f);
+    minimizer_engine->minimize(sequences);
+    minimizer_engine->filter(f);
 
     logger.log("[ram::] created minimizers in");
 

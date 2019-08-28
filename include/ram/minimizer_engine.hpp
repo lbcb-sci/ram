@@ -33,15 +33,17 @@ public:
     ~MinimizerEngine() = default;
 
     /*!
-     * @brief Transforms a set of sequences to a hash of minimizers without
-     * the most frequent f.
+     * @brief Transforms a set of sequences to a hash of minimizers.
      */
-    void minimize(const std::vector<std::unique_ptr<Sequence>>& sequences,
-        double f);
+    void minimize(const std::vector<std::unique_ptr<Sequence>>& sequences);
     void minimize(
         typename std::vector<std::unique_ptr<Sequence>>::const_iterator begin,
-        typename std::vector<std::unique_ptr<Sequence>>::const_iterator end,
-        double f);
+        typename std::vector<std::unique_ptr<Sequence>>::const_iterator end);
+
+    /*!
+     * @brief Set minimizer occurence threshold for the most frequent f.
+     */
+    void filter(double f);
 
     /*!
      * @brief Maps a sequence to a preconstructed minimizer hash while ignoring
