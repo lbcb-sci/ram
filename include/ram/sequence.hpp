@@ -12,6 +12,7 @@
 namespace ram {
 
 struct Sequence {
+    Sequence() = default;
     Sequence(const char* name, std::uint32_t name_length,
         const char* data, std::uint32_t data_length)
             : id(num_objects++),

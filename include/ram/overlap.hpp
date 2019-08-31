@@ -11,6 +11,7 @@
 namespace ram {
 
 struct Overlap {
+    Overlap() = default;
     Overlap(std::uint32_t q_id, std::uint32_t q_begin, std::uint32_t q_end,
         std::uint32_t t_id, std::uint32_t t_begin, std::uint32_t t_end,
         std::uint32_t strand, std::uint32_t matches)
