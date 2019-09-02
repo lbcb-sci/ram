@@ -52,6 +52,12 @@ public:
     std::vector<Overlap> map(const std::unique_ptr<Sequence>& sequence, bool d,
         bool t, std::uint32_t e = -1) const;
 
+    /*!
+     * @brief Map a pair of sequences without prior hash construction.
+     */
+    std::vector<Overlap> map(const std::unique_ptr<Sequence>& query,
+        const std::unique_ptr<Sequence>& target) const;
+
     friend std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
         std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool);
 private:
@@ -59,6 +65,8 @@ private:
         std::shared_ptr<thread_pool::ThreadPool> thread_pool);
     MinimizerEngine(const MinimizerEngine&) = delete;
     const MinimizerEngine& operator=(const MinimizerEngine&) = delete;
+
+    std::vector<Overlap> chain(std::uint32_t q_id, std::vector<uint128_t>& matches) const;
 
     std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& sequence,
         std::uint32_t e = -1) const;

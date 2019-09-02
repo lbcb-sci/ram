@@ -242,20 +242,20 @@ void MinimizerEngine::filter(double f) {
     o_ = occurrences[(1 - f) * occurrences.size()] + 1;
 }
 
-std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& sequence,
+std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& query,
     bool d, bool t, std::uint32_t e) const {
 
-    auto minimizers = minimize(sequence, e);
-
     std::vector<Overlap> dst;
-    if (minimizers.empty()) {
+
+    auto q_sketch = minimize(query, e);
+    if (q_sketch.empty()) {
         return dst;
     }
 
     std::uint64_t mask = minimizers_.size() - 1;
     std::vector<uint128_t> matches;
 
-    for (const auto& it: minimizers) {
+    for (const auto& it: q_sketch) {
 
         std::uint32_t bin = it.first & mask;
         auto info = index_[bin].find(it.first);
@@ -273,10 +273,10 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& seque
 
             std::uint64_t t_id = jt->second >> 32;
 
-            if (d && sequence->id == t_id) {
+            if (d && query->id == t_id) {
                 continue;
             }
-            if (t && sequence->id > t_id) {
+            if (t && query->id > t_id) {
                 continue;
             }
 
@@ -291,6 +291,62 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& seque
                 (q_pos << 32) | t_pos);
         }
     }
+    return chain(query->id, matches);
+}
+
+std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& query,
+    const std::unique_ptr<Sequence>& target) const {
+
+    std::vector<Overlap> dst;
+
+    auto q_sketch = minimize(query);
+    if (q_sketch.empty()) {
+        return dst;
+    }
+    auto t_sketch = minimize(target);
+    if (t_sketch.empty()) {
+        return dst;
+    }
+
+    radix_sort(q_sketch.begin(), q_sketch.end(), k_ * 2, uint128_t_first);
+    radix_sort(t_sketch.begin(), t_sketch.end(), k_ * 2, uint128_t_first);
+
+    std::vector<uint128_t> matches;
+
+    for (std::uint32_t i = 0, j = 0; i < q_sketch.size(); ++i) {
+        while (j < t_sketch.size()) {
+            if (q_sketch[i].first < t_sketch[j].first) {
+                break;
+            } else if (q_sketch[i].first == t_sketch[j].first) {
+                for (std::uint32_t k = j; k < t_sketch.size(); ++k) {
+                    if (q_sketch[i].first != t_sketch[k].first) {
+                        break;
+                    }
+
+                    std::uint64_t strand = (q_sketch[i].second & 1) == (t_sketch[k].second & 1);
+                    std::uint64_t q_pos = q_sketch[i].second << 32 >> 33;
+                    std::uint64_t t_pos = t_sketch[k].second << 32 >> 33;
+
+                    std::uint64_t diff = !strand ? t_pos + q_pos :
+                        (1ULL << 31) + t_pos - q_pos;
+
+                    matches.emplace_back((((target->id << 1) | strand) << 32) | diff,
+                        (q_pos << 32) | t_pos);
+                }
+                break;
+            } else {
+                ++j;
+            }
+        }
+    }
+
+    return chain(query->id, matches);
+}
+
+std::vector<Overlap> MinimizerEngine::chain(std::uint32_t q_id,
+    std::vector<uint128_t>& matches) const {
+
+    std::vector<Overlap> dst;
 
     radix_sort(matches.begin(), matches.end(), 64, uint128_t_first);
     matches.emplace_back(-1, -1); // stop dummy
@@ -346,7 +402,7 @@ std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& seque
                 continue;
             }
 
-            dst.emplace_back(sequence->id,
+            dst.emplace_back(q_id,
                 matches[j + indices.front()].second >> 32,
                 k_ + (matches[j + indices.back()].second >> 32),
                 matches[i - 1].first >> 33,
