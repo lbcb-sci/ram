@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.9";
+static const std::string version = "v0.0.10";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
