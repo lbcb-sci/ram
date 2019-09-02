@@ -379,6 +379,17 @@ std::vector<uint128_t> MinimizerEngine::minimize(
     std::uint64_t shift = (k_ - 1) * 2;
     std::uint64_t minimizer = 0, reverse_minimizer = 0;
 
+    auto hash = [&] (std::uint64_t key) -> std::uint64_t {
+        key = ((~key) + (key << 21)) & mask;
+        key = key ^ (key >> 24);
+        key = ((key + (key << 3)) + (key << 8)) & mask;
+        key = key ^ (key >> 14);
+        key = ((key + (key << 2)) + (key << 4)) & mask;
+        key = key ^ (key >> 28);
+        key = (key + (key << 31)) & mask;
+        return key;
+    };
+
     std::deque<uint128_t> window;
     auto window_add = [&window](std::uint64_t value, std::uint64_t location) -> void {
         while (!window.empty() && window.back().first > value) {
@@ -405,9 +416,9 @@ std::vector<uint128_t> MinimizerEngine::minimize(
         reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
         if (i >= k_ - 1U) {
             if (minimizer < reverse_minimizer) {
-                window_add(std::hash<std::uint64_t>{}(minimizer), (i - (k_ - 1U)) << 1 | 0);
+                window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
             } else if (minimizer > reverse_minimizer) {
-                window_add(std::hash<std::uint64_t>{}(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
+                window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
             }
         }
         if (i >= (k_ - 1U) + (w_ - 1U)) {
