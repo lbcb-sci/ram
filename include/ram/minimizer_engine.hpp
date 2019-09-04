@@ -73,9 +73,9 @@ private:
 
     std::uint8_t k_;
     std::uint8_t w_;
-    std::uint64_t o_;
+    std::uint32_t o_;
     std::vector<std::vector<uint128_t>> minimizers_;
-    std::vector<std::unordered_map<std::uint64_t, uint128_t>> index_;
+    std::vector<std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>> index_;
     std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
 };
 

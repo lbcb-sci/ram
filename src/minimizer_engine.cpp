@@ -168,30 +168,26 @@ void MinimizerEngine::minimize(
         return;
     }
 
-    std::vector<std::vector<uint128_t>> storage(end - begin);
-    std::vector<std::future<void>> thread_futures;
-    for (auto it = begin; it != end; ++it) {
-        thread_futures.emplace_back(thread_pool_->submit(
-            [&] (std::vector<std::unique_ptr<Sequence>>::const_iterator it) -> void {
-                storage[it - begin] = minimize((*it));
-            }
-        , it));
-    }
-    for (const auto& it: thread_futures) {
-        it.wait();
-    }
-    thread_futures.clear();
-
     std::uint64_t mask = minimizers_.size() - 1;
 
-    for (std::uint64_t i = 0; i < storage.size(); ++i) {
-        for (const auto& it: storage[i]) {
-            minimizers_[it.first & mask].emplace_back(it);
+    {
+        std::vector<std::future<std::vector<uint128_t>>> thread_futures;
+        for (auto it = begin; it != end; ++it) {
+            thread_futures.emplace_back(thread_pool_->submit(
+                [&] (std::vector<std::unique_ptr<Sequence>>::const_iterator it) -> std::vector<uint128_t> {
+                    return minimize((*it));
+                }
+            , it));
         }
-        std::vector<uint128_t>().swap(storage[i]);
+        for (auto& it: thread_futures) {
+            it.wait();
+            for (const auto& jt: it.get()) {
+                minimizers_[jt.first & mask].emplace_back(jt);
+            }
+        }
     }
-    std::vector<std::vector<uint128_t>>().swap(storage);
 
+    std::vector<std::future<void>> thread_futures;
     for (std::uint32_t i = 0; i < minimizers_.size(); ++i) {
         if (minimizers_[i].empty()) {
             continue;
@@ -207,11 +203,13 @@ void MinimizerEngine::minimize(
 
                 for (std::uint64_t j = 0, count = 0; j < minimizers.size(); ++j) {
                     if (j > 0 && minimizers[j - 1].first != minimizers[j].first) {
-                        index[minimizers[j - 1].first] = std::make_pair(j - count, count);
+                        index.emplace(minimizers[j - 1].first, std::make_pair(
+                            j - count, count));
                         count = 0;
                     }
                     if (j == minimizers.size() - 1) {
-                        index[minimizers[j].first] = std::make_pair(j - count, count + 1);
+                        index.emplace(minimizers[j].first, std::make_pair(
+                            j - count, count + 1));
                     }
                     ++count;
                 }
@@ -221,7 +219,6 @@ void MinimizerEngine::minimize(
     for (const auto& it: thread_futures) {
         it.wait();
     }
-    thread_futures.clear();
 }
 
 void MinimizerEngine::filter(double f) {
@@ -231,8 +228,8 @@ void MinimizerEngine::filter(double f) {
         return;
     }
 
-    std::vector<std::uint64_t> occurrences;
-    for (std::uint64_t i = 0; i < index_.size(); ++i) {
+    std::vector<std::uint32_t> occurrences;
+    for (std::uint32_t i = 0; i < index_.size(); ++i) {
         for (const auto& it: index_[i]) {
             occurrences.emplace_back(it.second.second);
         }
@@ -351,69 +348,77 @@ std::vector<Overlap> MinimizerEngine::chain(std::uint32_t q_id,
     radix_sort(matches.begin(), matches.end(), 64, uint128_t_first);
     matches.emplace_back(-1, -1); // stop dummy
 
+    std::vector<uint128_t> intervals;
     for (std::uint64_t i = 1, j = 0; i < matches.size(); ++i) {
-        if (matches[i].first - matches[i - 1].first > 500) {
-
-            if (i - j < 4) {
-                j = i;
-                continue;
-            }
-
-            radix_sort(matches.begin() + j, matches.begin() + i, 64,
-                uint128_t_second);
-
-            std::vector<std::uint64_t> indices;
-            if (matches[i - 1].first >> 32 & 1) {
-                indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + i, std::less<std::uint64_t>());
-            } else {
-                indices = longest_subsequence(matches.begin() + j,
-                    matches.begin() + i, std::greater<std::uint64_t>());
-            }
-
-            if (indices.size() < 4) {
-                j = i;
-                continue;
-            }
-
-            bool strand = matches[i - 1].first >> 32 & 1;
-            std::uint32_t q_matches = 0, q_begin = 0, q_end = 0;
-            std::uint32_t t_matches = 0, t_begin = 0, t_end = 0;
-            for (std::uint32_t k = 0; k < indices.size(); ++k) {
-                std::uint32_t q_pos = matches[j + indices[k]].second >> 32;
-                if (q_pos > q_end) {
-                    q_matches += q_end - q_begin;
-                    q_begin = q_pos;
+        if (matches[i].first - matches[j].first > 500) {
+            if (i - j >= 4) {
+                if (!intervals.empty() && intervals.back().second > j) {
+                    intervals.back().second = i;
+                } else {
+                    intervals.emplace_back(j, i);
                 }
-                q_end = q_pos + k_;
-
-                std::uint32_t t_pos = matches[j + indices[k]].second << 32 >> 32;
-                t_pos = strand ? t_pos : (1U << 31) - (t_pos + k_ - 1);
-                if (t_pos > t_end) {
-                    t_matches += t_end - t_begin;
-                    t_begin = t_pos;
-                }
-                t_end = t_pos + k_;
             }
-            q_matches += q_end - q_begin;
-            t_matches += t_end - t_begin;
-            if (q_matches < 100 || t_matches < 100) {
-                j = i;
-                continue;
-            }
-
-            dst.emplace_back(q_id,
-                matches[j + indices.front()].second >> 32,
-                k_ + (matches[j + indices.back()].second >> 32),
-                matches[i - 1].first >> 33,
-                strand ? matches[j + indices.front()].second << 32 >> 32 :
-                    matches[j + indices.back()].second << 32 >> 32,
-                k_ + (strand ? matches[j + indices.back()].second << 32 >> 32 :
-                    matches[j + indices.front()].second << 32 >> 32),
-                strand, std::min(q_matches, t_matches));
-
-            j = i;
+            for (++j; j < i && matches[i].first - matches[j].first > 500; ++j);
         }
+    }
+
+    for (const auto& it: intervals) {
+        std::uint64_t i = it.second, j = it.first;
+
+        if (i - j < 4) {
+            continue;
+        }
+
+        radix_sort(matches.begin() + j, matches.begin() + i, 64,
+            uint128_t_second);
+
+        std::vector<std::uint64_t> indices;
+        if (matches[i - 1].first >> 32 & 1) {
+            indices = longest_subsequence(matches.begin() + j,
+                matches.begin() + i, std::less<std::uint64_t>());
+        } else {
+            indices = longest_subsequence(matches.begin() + j,
+                matches.begin() + i, std::greater<std::uint64_t>());
+        }
+
+        if (indices.size() < 4) {
+            continue;
+        }
+
+        bool strand = matches[i - 1].first >> 32 & 1;
+        std::uint32_t q_matches = 0, q_begin = 0, q_end = 0;
+        std::uint32_t t_matches = 0, t_begin = 0, t_end = 0;
+        for (std::uint32_t k = 0; k < indices.size(); ++k) {
+            std::uint32_t q_pos = matches[j + indices[k]].second >> 32;
+            if (q_pos > q_end) {
+                q_matches += q_end - q_begin;
+                q_begin = q_pos;
+            }
+            q_end = q_pos + k_;
+
+            std::uint32_t t_pos = matches[j + indices[k]].second << 32 >> 32;
+            t_pos = strand ? t_pos : (1U << 31) - (t_pos + k_ - 1);
+            if (t_pos > t_end) {
+                t_matches += t_end - t_begin;
+                t_begin = t_pos;
+            }
+            t_end = t_pos + k_;
+        }
+        q_matches += q_end - q_begin;
+        t_matches += t_end - t_begin;
+        if (q_matches < 100 || t_matches < 100) {
+            continue;
+        }
+
+        dst.emplace_back(q_id,
+            matches[j + indices.front()].second >> 32,
+            k_ + (matches[j + indices.back()].second >> 32),
+            matches[i - 1].first >> 33,
+            strand ? matches[j + indices.front()].second << 32 >> 32 :
+                matches[j + indices.back()].second << 32 >> 32,
+            k_ + (strand ? matches[j + indices.back()].second << 32 >> 32 :
+                matches[j + indices.front()].second << 32 >> 32),
+            strand, std::min(q_matches, t_matches));
     }
 
     return dst;
