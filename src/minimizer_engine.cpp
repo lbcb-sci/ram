@@ -364,7 +364,10 @@ std::vector<Overlap> MinimizerEngine::chain(std::uint32_t q_id,
                     intervals.emplace_back(j, i);
                 }
             }
-            for (++j; j < i && matches[i].first - matches[j].first > 500; ++j);
+            ++j;
+            while (j < i && matches[i].first - matches[j].first > 500) {
+                ++j;
+            }
         }
     }
 
@@ -391,40 +394,54 @@ std::vector<Overlap> MinimizerEngine::chain(std::uint32_t q_id,
             continue;
         }
 
-        bool strand = matches[i - 1].first >> 32 & 1;
-        std::uint32_t q_matches = 0, q_begin = 0, q_end = 0;
-        std::uint32_t t_matches = 0, t_begin = 0, t_end = 0;
-        for (std::uint32_t k = 0; k < indices.size(); ++k) {
-            std::uint32_t q_pos = matches[j + indices[k]].second >> 32;
-            if (q_pos > q_end) {
+        indices.emplace_back(matches.size() - j - 1);
+        for (std::uint32_t k = 1, l = 0; k < indices.size(); ++k) {
+            if ((matches[j + indices[k]].second >> 32) -
+                (matches[j + indices[k - 1]].second >> 32) > 10000) {
+                if (k - l < 4) {
+                    l = k;
+                    continue;
+                }
+
+                bool strand = matches[i - 1].first >> 32 & 1;
+                std::uint32_t q_matches = 0, q_begin = 0, q_end = 0;
+                std::uint32_t t_matches = 0, t_begin = 0, t_end = 0;
+                for (std::uint32_t m = l; m < k; ++m) {
+                    std::uint32_t q_pos = matches[j + indices[m]].second >> 32;
+                    if (q_pos > q_end) {
+                        q_matches += q_end - q_begin;
+                        q_begin = q_pos;
+                    }
+                    q_end = q_pos + k_;
+
+                    std::uint32_t t_pos = matches[j + indices[m]].second << 32 >> 32;
+                    t_pos = strand ? t_pos : (1U << 31) - (t_pos + k_ - 1);
+                    if (t_pos > t_end) {
+                        t_matches += t_end - t_begin;
+                        t_begin = t_pos;
+                    }
+                    t_end = t_pos + k_;
+                }
                 q_matches += q_end - q_begin;
-                q_begin = q_pos;
-            }
-            q_end = q_pos + k_;
-
-            std::uint32_t t_pos = matches[j + indices[k]].second << 32 >> 32;
-            t_pos = strand ? t_pos : (1U << 31) - (t_pos + k_ - 1);
-            if (t_pos > t_end) {
                 t_matches += t_end - t_begin;
-                t_begin = t_pos;
-            }
-            t_end = t_pos + k_;
-        }
-        q_matches += q_end - q_begin;
-        t_matches += t_end - t_begin;
-        if (q_matches < 100 || t_matches < 100) {
-            continue;
-        }
+                if (q_matches < 100 || t_matches < 100) {
+                    l = k;
+                    continue;
+                }
 
-        dst.emplace_back(q_id,
-            matches[j + indices.front()].second >> 32,
-            k_ + (matches[j + indices.back()].second >> 32),
-            matches[i - 1].first >> 33,
-            strand ? matches[j + indices.front()].second << 32 >> 32 :
-                matches[j + indices.back()].second << 32 >> 32,
-            k_ + (strand ? matches[j + indices.back()].second << 32 >> 32 :
-                matches[j + indices.front()].second << 32 >> 32),
-            strand, std::min(q_matches, t_matches));
+                dst.emplace_back(q_id,
+                    matches[j + indices[l]].second >> 32,
+                    k_ + (matches[j + indices[k - 1]].second >> 32),
+                    matches[i - 1].first >> 33,
+                    strand ? matches[j + indices[l]].second << 32 >> 32 :
+                        matches[j + indices[k - 1]].second << 32 >> 32,
+                    k_ + (strand ? matches[j + indices[k - 1]].second << 32 >> 32 :
+                        matches[j + indices[l]].second << 32 >> 32),
+                    strand, std::min(q_matches, t_matches));
+
+                l = k;
+            }
+        }
     }
 
     return dst;
