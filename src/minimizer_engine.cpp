@@ -234,6 +234,12 @@ void MinimizerEngine::filter(double f) {
             occurrences.emplace_back(it.second.second);
         }
     }
+
+    if (occurrences.empty()) {
+        o_ = -1;
+        return;
+    }
+
     std::nth_element(occurrences.begin(), occurrences.begin() +
         (1 - f) * occurrences.size(), occurrences.end());
     o_ = occurrences[(1 - f) * occurrences.size()] + 1;

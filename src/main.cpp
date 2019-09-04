@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.11";
+static const std::string version = "v0.0.12";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -23,8 +23,6 @@ static struct option options[] = {
     {"help", no_argument, nullptr, 'h'},
     {nullptr, 0, nullptr, 0}
 };
-
-constexpr std::uint32_t kChunkSize = 1024 * 1024 * 1024; // ~1GB
 
 void help();
 
@@ -114,6 +112,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    bool is_equal = false;
+    std::unique_ptr<bioparser::Parser<ram::Sequence>> sparser = nullptr;
+    if (input_paths.size() > 1) {
+        sparser = createParser(input_paths[1]);
+        if (sparser == nullptr) {
+            return 1;
+        }
+        is_equal = input_paths[0] == input_paths[1];
+    } else {
+        sparser = createParser(input_paths[0]);
+        is_equal = true;
+    }
+
     std::shared_ptr<thread_pool::ThreadPool> thread_pool;
     try {
         thread_pool = thread_pool::createThreadPool(num_threads);
@@ -125,113 +136,95 @@ int main(int argc, char** argv) {
     auto logger = logger::Logger();
     auto minimizer_engine = ram::createMinimizerEngine(k, w, thread_pool);
 
-    logger.log();
+    while (true) {
+        std::vector<std::unique_ptr<ram::Sequence>> targets;
 
-    std::vector<std::unique_ptr<ram::Sequence>> sequences;
-    try {
-        tparser->parse(sequences, -1);
-    } catch (std::invalid_argument& exception) {
-        std::cerr << exception.what() << std::endl;
-        return 1;
-    }
-
-    if (sequences.size() == 0) {
-        std::cerr << "[ram::] empty sequence file" << std::endl;
-        return 1;
-    }
-
-    logger.log("[ram::] parsed targets in");
-    logger.log();
-
-    minimizer_engine->minimize(sequences);
-    minimizer_engine->filter(f);
-
-    logger.log("[ram::] created minimizers in");
-
-    std::vector<std::unique_ptr<bioparser::Parser<ram::Sequence>>> sparsers;
-    std::vector<std::uint8_t> is_equal_sparser;
-
-    if (input_paths.size() > 1) {
-        for (std::uint32_t i = 1; i < input_paths.size(); ++i) {
-            sparsers.emplace_back(createParser(input_paths[i]));
-            if (sparsers.back() == nullptr) {
-                return 1;
-            }
-            is_equal_sparser.emplace_back(input_paths[0].compare(input_paths[i]) == 0 ?
-                true : false);
+        bool status;
+        try {
+            status = tparser->parse(targets, 1U << 30);
+        } catch (std::invalid_argument& exception) {
+            std::cerr << exception.what() << std::endl;
+            return 1;
         }
-    } else {
-        sparsers.emplace_back(createParser(input_paths[0]));
-        is_equal_sparser.emplace_back(true);
-    }
 
-    for (std::uint32_t i = 0; i < sparsers.size(); ++i) {
+        std::uint32_t num_targets = ram::Sequence::num_objects;
+        std::uint32_t t_offset = targets.empty() ? 0 : targets.front()->id;
 
-        ram::Sequence::num_objects = is_equal_sparser[i] ? 0 : sequences.size();
+        ram::Sequence::num_objects = 0;
+
+        logger.log();
+
+        minimizer_engine->minimize(targets);
+        minimizer_engine->filter(f);
+
+        logger.log("[ram::] created minimizers of " + std::to_string(targets.size()) + " sequences in");
 
         while (true) {
-            std::uint32_t l = sequences.size();
+            std::vector<std::unique_ptr<ram::Sequence>> sequences;
 
-            logger.log();
-
-            bool status;
+            bool status_s;
             try {
-                status = sparsers[i]->parse(sequences, kChunkSize);
+                status_s = sparser->parse(sequences, 1ULL << 32);
             } catch (std::invalid_argument& exception) {
                 std::cerr << exception.what() << std::endl;
                 return 1;
             }
 
-            logger.log("[ram::] parsed chunk of sequences in");
+            std::uint32_t q_offset = sequences.empty() ? 0 : sequences.front()->id;
+
             logger.log();
 
             std::vector<std::future<std::vector<ram::Overlap>>> thread_futures;
-            for (std::uint32_t j = l; j < sequences.size(); ++j) {
+            for (std::uint32_t i = 0; i < sequences.size(); ++i) {
                 thread_futures.emplace_back(thread_pool->submit(
-                    [&] (std::uint32_t j) -> std::vector<ram::Overlap> {
-                        return minimizer_engine->map(sequences[j], is_equal_sparser[i],
-                            is_equal_sparser[i]);
+                    [&] (std::uint32_t i) -> std::vector<ram::Overlap> {
+                        return minimizer_engine->map(sequences[i], is_equal,
+                            is_equal);
                     }
-                , j));
+                , i));
             }
-            for (std::uint32_t j = 0; j < thread_futures.size(); ++j) {
-                thread_futures[j].wait();
-                auto overlaps = thread_futures[j].get();
-                for (const auto& it: overlaps) {
-                    std::cout << sequences[l + j]->name << "\t"
-                              << sequences[l + j]->data.size() << "\t"
-                              << it.q_begin << "\t"
-                              << it.q_end << "\t"
-                              << (it.strand ? "+" : "-") << "\t"
-                              << sequences[it.t_id]->name << "\t"
-                              << sequences[it.t_id]->data.size() << "\t"
-                              << it.t_begin << "\t"
-                              << it.t_end << "\t"
-                              << it.matches << "\t"
-                              << std::max(it.q_end - it.q_begin, it.t_end - it.t_begin)<< "\t"
+            for (auto& it: thread_futures) {
+                it.wait();
+                for (const auto& jt: it.get()) {
+                    std::cout << sequences[jt.q_id - q_offset]->name << "\t"
+                              << sequences[jt.q_id - q_offset]->data.size() << "\t"
+                              << jt.q_begin << "\t"
+                              << jt.q_end << "\t"
+                              << (jt.strand ? "+" : "-") << "\t"
+                              << targets[jt.t_id - t_offset]->name << "\t"
+                              << targets[jt.t_id - t_offset]->data.size() << "\t"
+                              << jt.t_begin << "\t"
+                              << jt.t_end << "\t"
+                              << jt.matches << "\t"
+                              << std::max(jt.q_end - jt.q_begin, jt.t_end - jt.t_begin)<< "\t"
                               << 255
                               << std::endl;
                 }
             }
 
-            logger.log("[ram::] mapped chunk of sequences in");
+            logger.log("[ram::] mapped " + std::to_string(sequences.size()) + " sequences in");
 
-            sequences.resize(l);
-
-            if (!status) {
+            if (!status_s) {
+                sparser->reset();
                 break;
             }
         }
+
+        ram::Sequence::num_objects = num_targets;
+
+        if (!status) {
+            break;
+        }
     }
 
-    logger.total("[ram::] total time");
+    logger.total("[ram::]");
 
     return 0;
 }
 
 void help() {
     std::cout <<
-        "usage: ram [options ...] <sequences> [<sequences> ...]\n"
+        "usage: ram [options ...] <sequences> [<sequences>]\n"
         "\n"
         "    <sequences>\n"
         "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
