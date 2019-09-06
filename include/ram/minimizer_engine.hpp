@@ -49,8 +49,7 @@ public:
      * @brief Maps a sequence to a preconstructed minimizer hash while ignoring
      * self overlaps if d, and dual overlaps if t (both based on sequence id)
      */
-    std::vector<Overlap> map(const std::unique_ptr<Sequence>& sequence, bool d,
-        bool t, std::uint32_t e = -1) const;
+    std::vector<Overlap> map(const std::unique_ptr<Sequence>& sequence, bool d, bool t) const;
 
     /*!
      * @brief Map a pair of sequences without prior hash construction.
@@ -68,8 +67,7 @@ private:
 
     std::vector<Overlap> chain(std::uint32_t q_id, std::vector<uint128_t>& matches) const;
 
-    std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& sequence,
-        std::uint32_t e = -1) const;
+    std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& sequence) const;
 
     std::uint8_t k_;
     std::uint8_t w_;

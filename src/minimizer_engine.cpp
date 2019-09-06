@@ -246,11 +246,11 @@ void MinimizerEngine::filter(double f) {
 }
 
 std::vector<Overlap> MinimizerEngine::map(const std::unique_ptr<Sequence>& query,
-    bool d, bool t, std::uint32_t e) const {
+    bool d, bool t) const {
 
     std::vector<Overlap> dst;
 
-    auto q_sketch = minimize(query, e);
+    auto q_sketch = minimize(query);
     if (q_sketch.empty()) {
         return dst;
     }
@@ -448,16 +448,12 @@ std::vector<Overlap> MinimizerEngine::chain(std::uint32_t q_id,
 }
 
 std::vector<uint128_t> MinimizerEngine::minimize(
-    const std::unique_ptr<Sequence>& sequence, std::uint32_t e) const {
+    const std::unique_ptr<Sequence>& sequence) const {
 
     std::vector<uint128_t> dst;
     if (sequence->data.size() < k_) {
         return dst;
     }
-
-    e = std::min(e, static_cast<std::uint32_t>(sequence->data.size()));
-    std::uint32_t b = sequence->data.size() - e;
-    std::swap(b, e);
 
     std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
     std::uint64_t shift = (k_ - 1) * 2;
@@ -506,17 +502,15 @@ std::vector<uint128_t> MinimizerEngine::minimize(
             }
         }
         if (i >= (k_ - 1U) + (w_ - 1U)) {
-            if (i < b || i - (k_ - 1U) >= e) {
-                for (auto it = window.begin(); it != window.end(); ++it) {
-                    if (it->first != window.front().first) {
-                        break;
-                    }
-                    if (it->second & is_stored) {
-                        continue;
-                    }
-                    dst.emplace_back(it->first, id | it->second);
-                    it->second |= is_stored;
+            for (auto it = window.begin(); it != window.end(); ++it) {
+                if (it->first != window.front().first) {
+                    break;
                 }
+                if (it->second & is_stored) {
+                    continue;
+                }
+                dst.emplace_back(it->first, id | it->second);
+                it->second |= is_stored;
             }
             window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
         }
