@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.14";
+static const std::string version = "v0.0.15";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -29,31 +29,6 @@ void help();
 inline bool isSuffix(const std::string& src, const std::string& suffix) {
     return src.size() < suffix.size() ? false :
         src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-template<typename T>
-void shrinkToFit(std::vector<T>& src, std::uint64_t begin) {
-
-    std::uint64_t i = begin;
-    for (std::uint64_t j = begin; i < src.size(); ++i) {
-        if (src[i] != nullptr) {
-            continue;
-        }
-
-        j = std::max(j, i);
-        while (j < src.size() && src[j] == nullptr) {
-            ++j;
-        }
-
-        if (j >= src.size()) {
-            break;
-        } else if (i != j) {
-            std::swap(src[i], src[j]);
-        }
-    }
-    if (i < src.size()) {
-        src.resize(i);
-    }
 }
 
 std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {

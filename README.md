@@ -42,7 +42,7 @@ Optionally, you can run `sudo make install` to install Ram library (and executab
 Usage of ram is as following:
 
 ```bash
-usage: ram [options ...] <sequences> [<sequences> ...]
+usage: ram [options ...] <sequences> [<sequences>]
 
     <sequences>
         input file in FASTA/FASTQ format (can be compressed with gzip)
