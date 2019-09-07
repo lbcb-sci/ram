@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.15";
+static const std::string version = "v0.0.16";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -26,28 +26,7 @@ static struct option options[] = {
 
 void help();
 
-inline bool isSuffix(const std::string& src, const std::string& suffix) {
-    return src.size() < suffix.size() ? false :
-        src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
-}
-
-std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {
-
-    if (isSuffix(path, ".fasta")    || isSuffix(path, ".fa") ||
-        isSuffix(path, ".fasta.gz") || isSuffix(path, ".fa.gz")) {
-        return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
-    }
-    if (isSuffix(path, ".fastq")    || isSuffix(path, ".fq") ||
-        isSuffix(path, ".fastq.gz") || isSuffix(path, ".fq.gz")) {
-        return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
-    }
-
-    std::cerr << "[ram::] error: file " << path
-              << " has unsupported format extension (valid extensions: .fasta, "
-              << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!"
-              << std::endl;
-    return nullptr;
-}
+std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path);
 
 int main(int argc, char** argv) {
 
@@ -195,6 +174,29 @@ int main(int argc, char** argv) {
     logger.total("[ram::]");
 
     return 0;
+}
+
+std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {
+
+    auto is_suffix = [] (const std::string& src, const std::string& suffix) {
+        return src.size() < suffix.size() ? false :
+            src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
+
+    if (is_suffix(path, ".fasta")    || is_suffix(path, ".fa") ||
+        is_suffix(path, ".fasta.gz") || is_suffix(path, ".fa.gz")) {
+        return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
+    }
+    if (is_suffix(path, ".fastq")    || is_suffix(path, ".fq") ||
+        is_suffix(path, ".fastq.gz") || is_suffix(path, ".fq.gz")) {
+        return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
+    }
+
+    std::cerr << "[ram::] error: file " << path
+              << " has unsupported format extension (valid extensions: .fasta, "
+              << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!"
+              << std::endl;
+    return nullptr;
 }
 
 void help() {
