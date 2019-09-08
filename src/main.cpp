@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.16";
+static const std::string version = "v0.0.17";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -24,9 +24,9 @@ static struct option options[] = {
     {nullptr, 0, nullptr, 0}
 };
 
-void help();
-
 std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path);
+
+void help();
 
 int main(int argc, char** argv) {
 
@@ -138,7 +138,6 @@ int main(int argc, char** argv) {
                 , i));
             }
             for (auto& it: thread_futures) {
-                it.wait();
                 for (const auto& jt: it.get()) {
                     std::cout << sequences[jt.q_id - q_offset]->name << "\t"
                               << sequences[jt.q_id - q_offset]->data.size() << "\t"

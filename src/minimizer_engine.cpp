@@ -180,7 +180,6 @@ void MinimizerEngine::minimize(
             , it));
         }
         for (auto& it: thread_futures) {
-            it.wait();
             for (const auto& jt: it.get()) {
                 minimizers_[jt.first & mask].emplace_back(jt);
             }
