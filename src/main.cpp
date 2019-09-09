@@ -12,7 +12,7 @@
 
 #include "ram/ram.hpp"
 
-static const std::string version = "v0.0.17";
+static const std::string version = "v0.0.18";
 
 static struct option options[] = {
     {"kmer-length", required_argument, nullptr, 'k'},
@@ -184,11 +184,22 @@ std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string
 
     if (is_suffix(path, ".fasta")    || is_suffix(path, ".fa") ||
         is_suffix(path, ".fasta.gz") || is_suffix(path, ".fa.gz")) {
-        return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
+        try {
+            return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
+        } catch (const std::invalid_argument& exception) {
+            std::cerr << exception.what() << std::endl;
+            return nullptr;
+        }
+
     }
     if (is_suffix(path, ".fastq")    || is_suffix(path, ".fq") ||
         is_suffix(path, ".fastq.gz") || is_suffix(path, ".fq.gz")) {
-        return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
+        try {
+            return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
+        } catch (const std::invalid_argument& exception) {
+            std::cerr << exception.what() << std::endl;
+            return nullptr;
+        }
     }
 
     std::cerr << "[ram::] error: file " << path
