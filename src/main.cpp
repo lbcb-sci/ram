@@ -1,237 +1,239 @@
+// Copyright (c) 2020 Robert Vaser
+
 #include <getopt.h>
 
+#include <bitset>
+#include <cstdlib>
 #include <iostream>
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <algorithm>
 
-#include "bioparser/bioparser.hpp"
-#include "thread_pool/thread_pool.hpp"
-#include "logger/logger.hpp"
+#include "bioparser/fasta_parser.hpp"
+#include "bioparser/fastq_parser.hpp"
+#include "biosoup/timer.hpp"
 
-#include "ram/ram.hpp"
+#include "ram/minimizer_engine.hpp"
 
-static const std::string version = "v0.0.18";
+std::atomic<std::uint64_t> biosoup::Sequence::num_objects{0};
+
+namespace {
 
 static struct option options[] = {
-    {"kmer-length", required_argument, nullptr, 'k'},
-    {"window-length", required_argument, nullptr, 'w'},
-    {"filter-threshold", required_argument, nullptr, 'f'},
-    {"threads", required_argument, nullptr, 't'},
-    {"version", no_argument, nullptr, 'v'},
-    {"help", no_argument, nullptr, 'h'},
-    {nullptr, 0, nullptr, 0}
+  {"kmer-length", required_argument, nullptr, 'k'},
+  {"window-length", required_argument, nullptr, 'w'},
+  {"frequency-threshold", required_argument, nullptr, 'f'},
+  {"threads", required_argument, nullptr, 't'},
+  {"version", no_argument, nullptr, 'v'},
+  {"help", no_argument, nullptr, 'h'},
+  {nullptr, 0, nullptr, 0}
 };
 
-std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path);
+std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
+    CreateParser(const std::string& path) {
+  auto is_suffix = [] (const std::string& s, const std::string& suff) {
+    return s.size() < suff.size() ? false :
+        s.compare(s.size() - suff.size(), suff.size(), suff) == 0;
+  };
 
-void help();
+  if (is_suffix(path, ".fasta")    || is_suffix(path, ".fa") ||
+      is_suffix(path, ".fasta.gz") || is_suffix(path, ".fa.gz")) {
+    try {
+      return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastaParser>(path);  // NOLINT
+    } catch (const std::invalid_argument& exception) {
+      std::cerr << exception.what() << std::endl;
+      return nullptr;
+    }
+  }
+  if (is_suffix(path, ".fastq")    || is_suffix(path, ".fq") ||
+      is_suffix(path, ".fastq.gz") || is_suffix(path, ".fq.gz")) {
+    try {
+      return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastqParser>(path);  // NOLINT
+    } catch (const std::invalid_argument& exception) {
+      std::cerr << exception.what() << std::endl;
+      return nullptr;
+    }
+  }
+
+  std::cerr << "[ram::CreateParser] error: file " << path
+            << " has unsupported format extension (valid extensions: .fasta, "
+            << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)"
+            << std::endl;
+  return nullptr;
+}
+
+void Help() {
+  std::cout <<
+      "usage: ram [options ...] <sequences> [<sequences>]\n"
+      "\n"
+      "  # default output is stdout\n"
+      "  <sequences>\n"
+      "    input file in FASTA/FASTQ format (can be compressed with gzip)\n"
+      "\n"
+      "  options:\n"
+      "    -k, --kmer-length <int>\n"
+      "      default: 15\n"
+      "      length of minimizers\n"
+      "    -w, --window-length <int>\n"
+      "      default: 5\n"
+      "      window length from which minimizers are found\n"
+      "    -f, --frequency-threshold <float>\n"
+      "      default: 0.001\n"
+      "      threshold for ignoring most frequent minimizers\n"
+      "    -t, --threads <int>\n"
+      "      default: 1\n"
+      "      number of threads\n"
+      "    --version\n"
+      "      prints the version number\n"
+      "    -h, --help\n"
+      "      prints the usage\n";
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
+  std::uint32_t k = 15;
+  std::uint32_t w = 5;
+  double frequency = 0.001;
+  std::uint32_t num_threads = 1;
 
-    std::uint32_t k = 15;
-    std::uint32_t w = 5;
-    double f = 0.001;
-    std::uint32_t num_threads = 1;
+  std::vector<std::string> input_paths;
 
-    std::vector<std::string> input_paths;
-
-    char argument;
-    while ((argument = getopt_long(argc, argv, "k:w:f:t:h", options, nullptr)) != -1) {
-        switch (argument) {
-            case 'k': k = atoi(optarg); break;
-            case 'w': w = atoi(optarg); break;
-            case 'f': f = atof(optarg); break;
-            case 't': num_threads = atoi(optarg); break;
-            case 'v': std::cout << version << std::endl; return 0;
-            case 'h': help(); return 0;
-            default: return 1;
-        }
+  const char* optstr = "k:w:f:t:h";
+  char arg;
+  while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
+    switch (arg) {
+      case 'k': k = std::atoi(optarg); break;
+      case 'w': w = std::atoi(optarg); break;
+      case 'f': frequency = std::atof(optarg); break;
+      case 't': num_threads = std::atoi(optarg); break;
+      case 'v': std::cout << "TODO" << std::endl; return 0;
+      case 'h': Help(); return 0;
+      default: return 1;
     }
+  }
 
-    for (std::int32_t i = optind; i < argc; ++i) {
-        input_paths.emplace_back(argv[i]);
+  for (auto i = optind; i < argc; ++i) {
+    input_paths.emplace_back(argv[i]);
+  }
+
+  if (input_paths.empty()) {
+    std::cerr << "[ram::] error: missing input file(s)" << std::endl;
+    Help();
+    return 1;
+  }
+
+  auto tparser = CreateParser(input_paths[0]);
+  if (tparser == nullptr) {
+    return 1;
+  }
+
+  bool is_ava = false;
+  std::unique_ptr<bioparser::Parser<biosoup::Sequence>> sparser = nullptr;
+  if (input_paths.size() > 1) {
+    sparser = CreateParser(input_paths[1]);
+    if (sparser == nullptr) {
+      return 1;
     }
+    is_ava = input_paths[0] == input_paths[1];
+  } else {
+    sparser = CreateParser(input_paths[0]);
+    is_ava = true;
+  }
 
-    if (input_paths.empty()) {
-        std::cerr << "[ram::] error: missing input file(s)!" << std::endl;
-        help();
-        return 1;
-    }
+  auto thread_pool = std::make_shared<thread_pool::ThreadPool>(num_threads);
+  ram::MinimizerEngine minimizer_engine{k, w, thread_pool};
 
-    std::unique_ptr<bioparser::Parser<ram::Sequence>> tparser =
-        createParser(input_paths[0]);
-    if (tparser == nullptr) {
-        return 1;
-    }
+  biosoup::Timer timer{};
 
-    bool is_equal = false;
-    std::unique_ptr<bioparser::Parser<ram::Sequence>> sparser = nullptr;
-    if (input_paths.size() > 1) {
-        sparser = createParser(input_paths[1]);
-        if (sparser == nullptr) {
-            return 1;
-        }
-        is_equal = input_paths[0] == input_paths[1];
-    } else {
-        sparser = createParser(input_paths[0]);
-        is_equal = true;
-    }
+  while (true) {
+    timer.Start();
 
-    std::shared_ptr<thread_pool::ThreadPool> thread_pool;
+    std::vector<std::unique_ptr<biosoup::Sequence>> targets;
     try {
-        thread_pool = thread_pool::createThreadPool(num_threads);
+      targets = tparser->Parse(1U << 30);
     } catch (std::invalid_argument& exception) {
-        std::cerr << exception.what() << std::endl;
-        return 1;
+      std::cerr << exception.what() << std::endl;
+      return 1;
     }
 
-    auto logger = logger::Logger();
-    auto minimizer_engine = ram::createMinimizerEngine(k, w, thread_pool);
+    if (targets.empty()) {
+      break;
+    }
+
+    std::cerr << "[ram::] parsed " << targets.size() << " sequences in "
+              << timer.Stop() << "s"
+              << std::endl;
+
+    timer.Start();
+
+    minimizer_engine.Minimize(targets.begin(), targets.end());
+    minimizer_engine.Filter(frequency);
+
+    std::cerr << "[ram::] minimized sequences in "
+              << timer.Stop() << "s"
+              << std::endl;
+
+    std::uint64_t num_targets = biosoup::Sequence::num_objects;
+    biosoup::Sequence::num_objects = 0;
 
     while (true) {
-        std::vector<std::unique_ptr<ram::Sequence>> targets;
+      timer.Start();
 
-        bool status;
-        try {
-            status = tparser->parse(targets, 1U << 30);
-        } catch (std::invalid_argument& exception) {
-            std::cerr << exception.what() << std::endl;
-            return 1;
+      std::vector<std::unique_ptr<biosoup::Sequence>> sequences;
+      try {
+        sequences = sparser->Parse(1U << 30);
+      } catch (std::invalid_argument& exception) {
+        std::cerr << exception.what() << std::endl;
+        return 1;
+      }
+
+      if (sequences.empty()) {
+        break;
+      }
+
+      std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
+      for (const auto& it : sequences) {
+        futures.emplace_back(thread_pool->Submit(
+            [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
+                -> std::vector<biosoup::Overlap> {
+              return minimizer_engine.Map(sequence, is_ava, is_ava);
+            },
+            std::ref(it)));
+      }
+      for (auto& it : futures) {
+        std::uint64_t rhs_offset = targets.front()->id;
+        std::uint64_t lhs_offset = sequences.front()->id;
+        for (const auto& jt : it.get()) {
+          std::cout << sequences[(jt.lhs_id >> 1) - lhs_offset]->name << "\t"
+                    << sequences[(jt.lhs_id >> 1) - lhs_offset]->data.size() << "\t"  // NOLINT
+                    << jt.lhs_begin << "\t"
+                    << jt.lhs_end << "\t"
+                    << (jt.lhs_id & 1 ? "+" : "-") << "\t"
+                    << targets[jt.rhs_id - rhs_offset]->name << "\t"
+                    << targets[jt.rhs_id - rhs_offset]->data.size() << "\t"
+                    << jt.rhs_begin << "\t"
+                    << jt.rhs_end << "\t"
+                    << jt.score << "\t"
+                    << std::max(
+                          jt.lhs_end - jt.lhs_begin,
+                          jt.rhs_end - jt.rhs_begin) << "\t"
+                    << 255
+                    << std::endl;
         }
+      }
 
-        std::uint32_t num_targets = ram::Sequence::num_objects;
-        std::uint32_t t_offset = targets.empty() ? 0 : targets.front()->id;
+      std::cerr << "[ram::] mapped " << sequences.size() << " sequences in "
+                << timer.Stop() << "s"
+                << std::endl;
 
-        ram::Sequence::num_objects = 0;
-
-        logger.log();
-
-        minimizer_engine->minimize(targets);
-        minimizer_engine->filter(f);
-
-        logger.log("[ram::] created minimizers of " + std::to_string(targets.size()) + " sequences in");
-
-        while (true) {
-            std::vector<std::unique_ptr<ram::Sequence>> sequences;
-
-            bool status_s;
-            try {
-                status_s = sparser->parse(sequences, 1ULL << 32);
-            } catch (std::invalid_argument& exception) {
-                std::cerr << exception.what() << std::endl;
-                return 1;
-            }
-
-            std::uint32_t q_offset = sequences.empty() ? 0 : sequences.front()->id;
-
-            logger.log();
-
-            std::vector<std::future<std::vector<ram::Overlap>>> thread_futures;
-            for (std::uint32_t i = 0; i < sequences.size(); ++i) {
-                thread_futures.emplace_back(thread_pool->submit(
-                    [&] (std::uint32_t i) -> std::vector<ram::Overlap> {
-                        return minimizer_engine->map(sequences[i], is_equal,
-                            is_equal);
-                    }
-                , i));
-            }
-            for (auto& it: thread_futures) {
-                for (const auto& jt: it.get()) {
-                    std::cout << sequences[jt.q_id - q_offset]->name << "\t"
-                              << sequences[jt.q_id - q_offset]->data.size() << "\t"
-                              << jt.q_begin << "\t"
-                              << jt.q_end << "\t"
-                              << (jt.strand ? "+" : "-") << "\t"
-                              << targets[jt.t_id - t_offset]->name << "\t"
-                              << targets[jt.t_id - t_offset]->data.size() << "\t"
-                              << jt.t_begin << "\t"
-                              << jt.t_end << "\t"
-                              << jt.matches << "\t"
-                              << std::max(jt.q_end - jt.q_begin, jt.t_end - jt.t_begin)<< "\t"
-                              << 255
-                              << std::endl;
-                }
-            }
-
-            logger.log("[ram::] mapped " + std::to_string(sequences.size()) + " sequences in");
-
-            if (!status_s) {
-                sparser->reset();
-                break;
-            }
-        }
-
-        ram::Sequence::num_objects = num_targets;
-
-        if (!status) {
-            break;
-        }
+      if (is_ava && biosoup::Sequence::num_objects == num_targets) {
+        break;
+      }
     }
 
-    logger.total("[ram::]");
+    sparser->Reset();
+    biosoup::Sequence::num_objects = num_targets;
+  }
 
-    return 0;
-}
+  std::cerr << "[ram::] " << timer.elapsed_time() << "s" << std::endl;
 
-std::unique_ptr<bioparser::Parser<ram::Sequence>> createParser(const std::string& path) {
-
-    auto is_suffix = [] (const std::string& src, const std::string& suffix) {
-        return src.size() < suffix.size() ? false :
-            src.compare(src.size() - suffix.size(), suffix.size(), suffix) == 0;
-    };
-
-    if (is_suffix(path, ".fasta")    || is_suffix(path, ".fa") ||
-        is_suffix(path, ".fasta.gz") || is_suffix(path, ".fa.gz")) {
-        try {
-            return bioparser::createParser<bioparser::FastaParser, ram::Sequence>(path);
-        } catch (const std::invalid_argument& exception) {
-            std::cerr << exception.what() << std::endl;
-            return nullptr;
-        }
-
-    }
-    if (is_suffix(path, ".fastq")    || is_suffix(path, ".fq") ||
-        is_suffix(path, ".fastq.gz") || is_suffix(path, ".fq.gz")) {
-        try {
-            return bioparser::createParser<bioparser::FastqParser, ram::Sequence>(path);
-        } catch (const std::invalid_argument& exception) {
-            std::cerr << exception.what() << std::endl;
-            return nullptr;
-        }
-    }
-
-    std::cerr << "[ram::] error: file " << path
-              << " has unsupported format extension (valid extensions: .fasta, "
-              << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)!"
-              << std::endl;
-    return nullptr;
-}
-
-void help() {
-    std::cout <<
-        "usage: ram [options ...] <sequences> [<sequences>]\n"
-        "\n"
-        "    <sequences>\n"
-        "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
-        "        containing sequences\n"
-        "\n"
-        "    options:\n"
-        "        -k, --kmer-length <int>\n"
-        "            default: 15\n"
-        "            length of minimizers\n"
-        "        -w, --window-length <int>\n"
-        "            default: 5\n"
-        "            window length from which minimizers are found\n"
-        "        -f, --filter-threshold <float>\n"
-        "            default: 0.001\n"
-        "            threshold for ignoring most frequent minimizers\n"
-        "        -t, --threads <int>\n"
-        "            default: 1\n"
-        "            number of threads\n"
-        "        --version\n"
-        "            prints the version number\n"
-        "        -h, --help\n"
-        "            prints the usage\n";
+  return 0;
 }
