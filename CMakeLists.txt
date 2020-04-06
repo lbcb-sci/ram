@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(ram VERSION 1.0.0
+project(ram VERSION 1.0.1
             LANGUAGES CXX
             DESCRIPTION "Ram is a c++ implementation of [minimap](https://github.com/lh3/minimap) with few modifications.")
 
@@ -32,8 +32,21 @@ if (ram_build_executable)
   endif ()
   add_executable(${PROJECT_NAME}_exe src/main.cpp)
   target_link_libraries(${PROJECT_NAME}_exe ${PROJECT_NAME} bioparser)
-  set_target_properties(${PROJECT_NAME}_exe PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
+  target_compile_definitions(${PROJECT_NAME}_exe
+    PRIVATE RAM_VERSION="v${PROJECT_VERSION}")
+  set_target_properties(${PROJECT_NAME}_exe
+    PROPERTIES OUTPUT_NAME ${PROJECT_NAME})
 
   include(GNUInstallDirs)
   install(TARGETS ${PROJECT_NAME}_exe DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif ()
+
+option(ram_build_tests "Build ram unit tests" OFF)
+if (ram_build_tests)
+  find_package(GTest REQUIRED)
+  add_executable(${PROJECT_NAME}_test
+    test/minimizer_engine_test.cpp)
+  target_link_libraries(${PROJECT_NAME}_test ${PROJECT_NAME} bioparser GTest::Main)
+  target_compile_definitions(${PROJECT_NAME}_test
+    PRIVATE RAM_DATA_PATH="${PROJECT_SOURCE_DIR}/test/data/sample.fasta.gz")
 endif ()

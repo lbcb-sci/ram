@@ -46,13 +46,9 @@ MinimizerEngine::MinimizerEngine(
       occurrence_(-1),
       minimizers_(1U << std::min(14U, 2 * k_)),
       index_(minimizers_.size()),
-      thread_pool_(thread_pool) {
-
-  if (thread_pool_ == nullptr) {
-    throw std::invalid_argument(
-      "[thread_pool::ThreadPool] error: thread_pool is invalid");
-  }
-}
+      thread_pool_(thread_pool ?
+          thread_pool :
+          std::make_shared<thread_pool::ThreadPool>(1)) {}
 
 void MinimizerEngine::Minimize(
     std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,

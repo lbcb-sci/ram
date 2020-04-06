@@ -8,6 +8,7 @@
 
 #include "bioparser/fasta_parser.hpp"
 #include "bioparser/fastq_parser.hpp"
+#include "biosoup/progress_bar.hpp"
 #include "biosoup/timer.hpp"
 
 #include "ram/minimizer_engine.hpp"
@@ -15,6 +16,8 @@
 std::atomic<std::uint64_t> biosoup::Sequence::num_objects{0};
 
 namespace {
+
+const char* ram_version = RAM_VERSION;
 
 static struct option options[] = {
   {"kmer-length", required_argument, nullptr, 'k'},
@@ -104,10 +107,15 @@ int main(int argc, char** argv) {
       case 'w': w = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 't': num_threads = std::atoi(optarg); break;
-      case 'v': std::cout << "TODO" << std::endl; return 0;
+      case 'v': std::cout << ram_version << std::endl; return 0;
       case 'h': Help(); return 0;
       default: return 1;
     }
+  }
+
+  if (argc == 1) {
+    Help();
+    return 0;
   }
 
   for (auto i = optind; i < argc; ++i) {
@@ -115,8 +123,7 @@ int main(int argc, char** argv) {
   }
 
   if (input_paths.empty()) {
-    std::cerr << "[ram::] error: missing input file(s)" << std::endl;
-    Help();
+    std::cerr << "[ram::] error: missing sequences file" << std::endl;
     return 1;
   }
 
@@ -158,8 +165,8 @@ int main(int argc, char** argv) {
       break;
     }
 
-    std::cerr << "[ram::] parsed " << targets.size() << " sequences in "
-              << timer.Stop() << "s"
+    std::cerr << "[ram::] parsed " << targets.size() << " sequences "
+              << std::fixed << timer.Stop() << "s"
               << std::endl;
 
     timer.Start();
@@ -167,8 +174,8 @@ int main(int argc, char** argv) {
     minimizer_engine.Minimize(targets.begin(), targets.end());
     minimizer_engine.Filter(frequency);
 
-    std::cerr << "[ram::] minimized sequences in "
-              << timer.Stop() << "s"
+    std::cerr << "[ram::] minimized sequences "
+              << std::fixed << timer.Stop() << "s"
               << std::endl;
 
     std::uint64_t num_targets = biosoup::Sequence::num_objects;
@@ -198,6 +205,10 @@ int main(int argc, char** argv) {
             },
             std::ref(it)));
       }
+
+      biosoup::ProgressBar bar{
+          static_cast<std::uint32_t>(sequences.size()), 16};
+
       for (auto& it : futures) {
         std::uint64_t rhs_offset = targets.front()->id;
         std::uint64_t lhs_offset = sequences.front()->id;
@@ -218,11 +229,16 @@ int main(int argc, char** argv) {
                     << 255
                     << std::endl;
         }
-      }
 
-      std::cerr << "[ram::] mapped " << sequences.size() << " sequences in "
-                << timer.Stop() << "s"
-                << std::endl;
+        if (++bar) {
+          std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
+                    << "[" << bar << "] "
+                    << std::fixed << timer.Lap() << "s"
+                    << "\r";
+        }
+      }
+      std::cerr << std::endl;
+      timer.Stop();
 
       if (is_ava && biosoup::Sequence::num_objects == num_targets) {
         break;

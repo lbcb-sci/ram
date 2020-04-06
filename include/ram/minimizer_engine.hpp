@@ -20,7 +20,7 @@ class MinimizerEngine {
   MinimizerEngine(
       std::uint32_t kmer_len,  // element of [1, 32]
       std::uint32_t window_len,
-      std::shared_ptr<thread_pool::ThreadPool> thread_pool);
+      std::shared_ptr<thread_pool::ThreadPool> thread_pool = nullptr);
 
   MinimizerEngine(const MinimizerEngine&) = delete;
   MinimizerEngine& operator=(const MinimizerEngine&) = delete;
