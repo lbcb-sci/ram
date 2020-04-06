@@ -122,5 +122,29 @@ TEST_F(RamMinimizerEngineTest, Filter) {
   EXPECT_EQ(980, o.front().score);
 }
 
+TEST_F(RamMinimizerEngineTest, Micromize) {
+  MinimizerEngine me{15, 5};
+  me.Minimize(s.begin(), s.end());
+  auto o = me.Map(s.front(), true, true, true);
+  EXPECT_EQ(1, o.size());
+  EXPECT_EQ(1, o.front().lhs_id);
+  EXPECT_EQ(80, o.front().lhs_begin);
+  EXPECT_EQ(1857, o.front().lhs_end);
+  EXPECT_EQ(1, o.front().rhs_id);
+  EXPECT_EQ(55, o.front().rhs_begin);
+  EXPECT_EQ(1881, o.front().rhs_end);
+  EXPECT_EQ(242, o.front().score);
+
+  o = me.Map(s.front(), s.back(), true);
+  EXPECT_EQ(1, o.size());
+  EXPECT_EQ(1, o.front().lhs_id);
+  EXPECT_EQ(80, o.front().lhs_begin);
+  EXPECT_EQ(1857, o.front().lhs_end);
+  EXPECT_EQ(1, o.front().rhs_id);
+  EXPECT_EQ(55, o.front().rhs_begin);
+  EXPECT_EQ(1881, o.front().rhs_end);
+  EXPECT_EQ(242, o.front().score);
+}
+
 }  // namespace test
 }  // namespace ram

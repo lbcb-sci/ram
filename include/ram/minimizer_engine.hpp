@@ -30,7 +30,7 @@ class MinimizerEngine {
 
   ~MinimizerEngine() = default;
 
-  // transform set of sequences to index of minimizers
+  // transform set of sequences to minimizer index
   void Minimize(
       std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
       std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end);
@@ -39,15 +39,18 @@ class MinimizerEngine {
   void Filter(double frequency);
 
   // find overlaps in preconstructed minimizer index
+  // micromizers = smallest sequence->data.size() / k minimizers
   std::vector<biosoup::Overlap> Map(
       const std::unique_ptr<biosoup::Sequence>& sequence,
       bool avoid_equal,  // ignore overaps in which lhs_id == rhs_id
-      bool avoid_symmetric) const;  // ignore overlaps in which lhs_id > rhs_id
+      bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
+      bool micromize = false) const;  // only lhs
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
       const std::unique_ptr<biosoup::Sequence>& lhs,
-      const std::unique_ptr<biosoup::Sequence>& rhs) const;
+      const std::unique_ptr<biosoup::Sequence>& rhs,
+      bool micromize = false) const;  // only lhs
 
  private:
   using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
@@ -66,7 +69,8 @@ class MinimizerEngine {
   //             [31:1] pos
   //             [1:1] strand
   std::vector<uint128_t> Minimize(
-      const std::unique_ptr<biosoup::Sequence>& sequence) const;
+      const std::unique_ptr<biosoup::Sequence>& sequence,
+      bool micromize = false) const;
 
   template<typename T>
   static void RadixSort(  // any uin128_t
