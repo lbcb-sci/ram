@@ -2,7 +2,6 @@
 
 #include <getopt.h>
 
-#include <bitset>
 #include <cstdlib>
 #include <iostream>
 
@@ -24,6 +23,7 @@ static struct option options[] = {
   {"window-length", required_argument, nullptr, 'w'},
   {"frequency-threshold", required_argument, nullptr, 'f'},
   {"micromize", no_argument, nullptr, 'm'},
+  {"wildcards", required_argument, nullptr, 'W'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -83,6 +83,9 @@ void Help() {
       "      threshold for ignoring most frequent minimizers\n"
       "    -m, --micromize\n"
       "      use only a portion of all minimizers\n"
+      "    --wildcards <string>\n"
+      "      default: 111111111111111\n"
+      "      allow wildcards (0) in minimizers\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -99,6 +102,8 @@ int main(int argc, char** argv) {
   std::uint32_t w = 5;
   double frequency = 0.001;
   bool micromize = false;
+  std::string wildcards;
+  std::uint64_t wildcard_mask = -1;
   std::uint32_t num_threads = 1;
 
   std::vector<std::string> input_paths;
@@ -111,6 +116,7 @@ int main(int argc, char** argv) {
       case 'w': w = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 'm': micromize = true; break;
+      case 'W': wildcards = optarg; break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << ram_version << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -130,6 +136,18 @@ int main(int argc, char** argv) {
   if (input_paths.empty()) {
     std::cerr << "[ram::] error: missing sequences file" << std::endl;
     return 1;
+  }
+  if (!wildcards.empty()) {
+    if (wildcards.size() != k ||
+        wildcards.find_first_not_of("01") != std::string::npos) {
+      std::cerr << "[ram::] error: invalid wildcards string" << std::endl;
+      return 1;
+    }
+    for (std::uint32_t i = 0; i < k; ++i) {
+      if (wildcards[i] == '0') {
+        wildcard_mask ^= 3ULL << (2 * (k - i - 1));
+      }
+    }
   }
 
   auto tparser = CreateParser(input_paths[0]);
@@ -151,7 +169,7 @@ int main(int argc, char** argv) {
   }
 
   auto thread_pool = std::make_shared<thread_pool::ThreadPool>(num_threads);
-  ram::MinimizerEngine minimizer_engine{k, w, thread_pool};
+  ram::MinimizerEngine minimizer_engine{k, w, thread_pool, wildcard_mask};
 
   biosoup::Timer timer{};
 

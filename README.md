@@ -34,6 +34,9 @@ usage: ram [options ...] <sequences> [<sequences>]
       threshold for ignoring most frequent minimizers
     -m, --micromize
       use only a portion of all minimizers
+    --wildcards <string>
+      default: 111111111111111
+      allow wildcards (0) in minimizers
     -t, --threads <int>
       default: 1
       number of threads

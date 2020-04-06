@@ -40,15 +40,17 @@ const std::vector<std::uint64_t> kCoder = {
 MinimizerEngine::MinimizerEngine(
     std::uint32_t kmer_len,
     std::uint32_t window_len,
-    std::shared_ptr<thread_pool::ThreadPool> thread_pool)
+    std::shared_ptr<thread_pool::ThreadPool> thread_pool,
+    std::uint64_t wildcard_mask)
     : k_(std::min(std::max(kmer_len, 1U), 32U)),
       w_(window_len),
-      occurrence_(-1),
-      minimizers_(1U << std::min(14U, 2 * k_)),
-      index_(minimizers_.size()),
       thread_pool_(thread_pool ?
           thread_pool :
-          std::make_shared<thread_pool::ThreadPool>(1)) {}
+          std::make_shared<thread_pool::ThreadPool>(1)),
+      wildcard_mask_(wildcard_mask),
+      occurrence_(-1),
+      minimizers_(1U << std::min(14U, 2 * k_)),
+      index_(minimizers_.size()) {}
 
 void MinimizerEngine::Minimize(
     std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
@@ -439,6 +441,12 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
   if (micromize) {
     RadixSort(dst.begin(), dst.end(), k_ * 2, ::First);
     dst.resize(sequence->data.size() / k_);
+  }
+
+  if (wildcard_mask_ != static_cast<std::uint64_t>(-1)) {
+    for (auto& it : dst) {
+      it.first = it.first & wildcard_mask_;
+    }
   }
 
   return dst;
