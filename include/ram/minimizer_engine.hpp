@@ -1,80 +1,99 @@
-/*!
- * @file minimizer_engine.hpp
- *
- * @brief MinimizerEngine class header file
- */
+// Copyright (c) 2020 Robet Vaser
 
-#pragma once
+#ifndef RAM_MINIMIZER_ENGINE_HPP_
+#define RAM_MINIMIZER_ENGINE_HPP_
 
 #include <cstdint>
-#include <string>
-#include <vector>
-#include <utility>
 #include <memory>
+#include <vector>
 #include <unordered_map>
+#include <utility>
 
-namespace thread_pool {
-    class Threadpool;
-}
+#include "biosoup/overlap.hpp"
+#include "biosoup/sequence.hpp"
+#include "thread_pool/thread_pool.hpp"
 
 namespace ram {
 
-class Sequence;
-class Overlap;
-class MinimizerEngine;
-
-using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
-
-std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
-    std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool);
-
 class MinimizerEngine {
-public:
-    ~MinimizerEngine() = default;
+ public:
+  MinimizerEngine(
+      std::uint32_t kmer_len,  // element of [1, 32]
+      std::uint32_t window_len,
+      std::shared_ptr<thread_pool::ThreadPool> thread_pool = nullptr);
 
-    /*!
-     * @brief Transforms a set of sequences to a hash of minimizers.
-     */
-    void minimize(const std::vector<std::unique_ptr<Sequence>>& sequences);
-    void minimize(
-        typename std::vector<std::unique_ptr<Sequence>>::const_iterator begin,
-        typename std::vector<std::unique_ptr<Sequence>>::const_iterator end);
+  MinimizerEngine(const MinimizerEngine&) = delete;
+  MinimizerEngine& operator=(const MinimizerEngine&) = delete;
 
-    /*!
-     * @brief Set minimizer occurence threshold for the most frequent f.
-     */
-    void filter(double f);
+  MinimizerEngine(MinimizerEngine&&) = default;
+  MinimizerEngine& operator=(MinimizerEngine&&) = default;
 
-    /*!
-     * @brief Maps a sequence to a preconstructed minimizer hash while ignoring
-     * self overlaps if d, and dual overlaps if t (both based on sequence id)
-     */
-    std::vector<Overlap> map(const std::unique_ptr<Sequence>& sequence, bool d, bool t) const;
+  ~MinimizerEngine() = default;
 
-    /*!
-     * @brief Map a pair of sequences without prior hash construction.
-     */
-    std::vector<Overlap> map(const std::unique_ptr<Sequence>& query,
-        const std::unique_ptr<Sequence>& target) const;
+  // transform set of sequences to minimizer index
+  void Minimize(
+      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
+      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end);
 
-    friend std::unique_ptr<MinimizerEngine> createMinimizerEngine(std::uint8_t k,
-        std::uint8_t w, std::shared_ptr<thread_pool::ThreadPool> thread_pool);
-private:
-    MinimizerEngine(std::uint8_t k, std::uint8_t w,
-        std::shared_ptr<thread_pool::ThreadPool> thread_pool);
-    MinimizerEngine(const MinimizerEngine&) = delete;
-    const MinimizerEngine& operator=(const MinimizerEngine&) = delete;
+  // set occurrence frequency threshold
+  void Filter(double frequency);
 
-    std::vector<Overlap> chain(std::uint32_t q_id, std::vector<uint128_t>& matches) const;
+  // find overlaps in preconstructed minimizer index
+  // micromizers = smallest sequence->data.size() / k minimizers
+  std::vector<biosoup::Overlap> Map(
+      const std::unique_ptr<biosoup::Sequence>& sequence,
+      bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
+      bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
+      bool micromize = false) const;  // only lhs
 
-    std::vector<uint128_t> minimize(const std::unique_ptr<Sequence>& sequence) const;
+  // find overlaps between a pair of sequences
+  std::vector<biosoup::Overlap> Map(
+      const std::unique_ptr<biosoup::Sequence>& lhs,
+      const std::unique_ptr<biosoup::Sequence>& rhs,
+      bool micromize = false) const;  // only lhs
 
-    std::uint8_t k_;
-    std::uint8_t w_;
-    std::uint32_t o_;
-    std::vector<std::vector<uint128_t>> minimizers_;
-    std::vector<std::unordered_map<std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>> index_;
-    std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
+ private:
+  using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
+
+  // Match = [127:97] rhs_id
+  //         [96:96] strand
+  //         [95:64] rhs_pos +- lhs_pos
+  //         [63:32] lhs_pos
+  //         [31:0] rhs_pos
+  std::vector<biosoup::Overlap> Chain(
+      std::uint64_t lhs_id,
+      std::vector<uint128_t>&& matches) const;
+
+  // Minimizer = [127:64] kmer
+  //             [63:32] id
+  //             [31:1] pos
+  //             [1:1] strand
+  std::vector<uint128_t> Minimize(
+      const std::unique_ptr<biosoup::Sequence>& sequence,
+      bool micromize = false) const;
+
+  template<typename T>
+  static void RadixSort(  // any uint128_t
+      std::vector<uint128_t>::iterator begin,
+      std::vector<uint128_t>::iterator end,
+      std::uint8_t max_bits,
+      T compare);  //  unary comparison function
+
+  template<typename T>
+  static std::vector<std::uint64_t> LongestSubsequence(  // only Match
+      std::vector<uint128_t>::const_iterator begin,
+      std::vector<uint128_t>::const_iterator end,
+      T compare);  // binary comparison function
+
+  std::uint32_t k_;
+  std::uint32_t w_;
+  std::uint32_t occurrence_;
+  std::vector<std::vector<uint128_t>> minimizers_;
+  std::vector<std::unordered_map<  // kmer -> (begin, count)
+      std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>> index_;
+  std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
 };
 
-}
+}  // namespace ram
+
+#endif  // RAM_MINIMIZER_ENGINE_HPP_
