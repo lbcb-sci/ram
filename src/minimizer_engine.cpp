@@ -417,10 +417,10 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
     minimizer = ((minimizer << 2) | c) & mask;
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
     if (i >= k_ - 1U) {
-      if (minimizer < reverse_minimizer) {
-        window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
-      } else if (minimizer > reverse_minimizer) {
-        window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
+      if ((minimizer & wildcard_mask_) < (reverse_minimizer & wildcard_mask_)) {
+        window_add(hash(minimizer & wildcard_mask_), (i - (k_ - 1U)) << 1 | 0);
+      } else if ((minimizer & wildcard_mask_) > (reverse_minimizer & wildcard_mask_)) {
+        window_add(hash(reverse_minimizer & wildcard_mask_), (i - (k_ - 1U)) << 1 | 1);
       }
     }
     if (i >= (k_ - 1U) + (w_ - 1U)) {
@@ -441,12 +441,6 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
   if (micromize) {
     RadixSort(dst.begin(), dst.end(), k_ * 2, ::First);
     dst.resize(sequence->data.size() / k_);
-  }
-
-  if (wildcard_mask_ != static_cast<std::uint64_t>(-1)) {
-    for (auto& it : dst) {
-      it.first = it.first & wildcard_mask_;
-    }
   }
 
   return dst;
