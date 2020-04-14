@@ -176,24 +176,24 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     auto end = jt + match->second.second;
     for (; jt != end; ++jt) {
       std::uint64_t rhs_id = jt->second >> 32;
-      if (avoid_equal && sequence->id == rhs_id) {
+      if (avoid_equal && static_cast<std::uint64_t>(sequence->id) == rhs_id) {
         continue;
       }
-      if (avoid_symmetric && sequence->id > rhs_id) {
+      if (avoid_symmetric && static_cast<std::uint64_t>(sequence->id) > rhs_id) {  // NOLINT
         continue;
       }
 
       std::uint64_t strand = (it.second & 1) == (jt->second & 1);
-      std::uint64_t lhs_begin = it.second << 32 >> 33;
-      std::uint64_t rhs_begin = jt->second << 32 >> 33;
+      std::uint64_t lhs_pos = it.second << 32 >> 33;
+      std::uint64_t rhs_pos = jt->second << 32 >> 33;
 
-      std::uint64_t diff = !strand ?
-          rhs_begin + lhs_begin :
-          rhs_begin - lhs_begin + (3ULL << 30);  // TODO(rvaser): check this
+      std::uint64_t diagonal = !strand ?
+          rhs_pos + lhs_pos :
+          rhs_pos - lhs_pos + (3ULL << 30);
 
       matches.emplace_back(
-          (((rhs_id << 1) | strand) << 32) | diff,
-          (lhs_begin << 32) | rhs_begin);
+          (((rhs_id << 1) | strand) << 32) | diagonal,
+          (lhs_pos << 32) | rhs_pos);
     }
   }
 
@@ -218,6 +218,8 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
   RadixSort(lhs_sketch.begin(), lhs_sketch.end(), k_ * 2, ::First);
   RadixSort(rhs_sketch.begin(), rhs_sketch.end(), k_ * 2, ::First);
 
+  std::uint64_t rhs_id = rhs->id;
+
   std::vector<uint128_t> matches;
   for (std::uint32_t i = 0, j = 0; i < lhs_sketch.size(); ++i) {
     while (j < rhs_sketch.size()) {
@@ -238,7 +240,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
               rhs_pos - lhs_pos + (3ULL << 30);
 
           matches.emplace_back(
-              (((rhs->id << 1) | strand) << 32) | diagonal,
+              (((rhs_id << 1) | strand) << 32) | diagonal,
               (lhs_pos << 32) | rhs_pos);
         }
         break;
@@ -345,7 +347,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
         }
 
         dst.emplace_back(
-            lhs_id << 1 | strand,
+            lhs_id,
             matches[j + indices[l]].second >> 32,  // lhs_begin
             k_ + (matches[j + indices[k - 1]].second >> 32),  // lhs_end
             matches[j].first >> 33,  // rhs_id
@@ -355,7 +357,8 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
             k_ + (strand ?  // rhs_end
                 matches[j + indices[k - 1]].second << 32 >> 32 :
                 matches[j + indices[l]].second << 32 >> 32),
-            std::min(lhs_matches, rhs_matches));  // score
+            std::min(lhs_matches, rhs_matches),  // score
+            strand);
 
         l = k;
       }
@@ -401,7 +404,7 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
   std::uint64_t shift = (k_ - 1) * 2;
   std::uint64_t minimizer = 0;
   std::uint64_t reverse_minimizer = 0;
-  std::uint64_t id = sequence->id << 32;
+  std::uint64_t id = static_cast<std::uint64_t>(sequence->id) << 32;
   std::uint64_t is_stored = 1ULL << 63;
 
   std::vector<uint128_t> dst;
