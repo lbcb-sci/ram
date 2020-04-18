@@ -214,15 +214,15 @@ int main(int argc, char** argv) {
       biosoup::ProgressBar bar{
           static_cast<std::uint32_t>(sequences.size()), 16};
 
+      std::uint64_t rhs_offset = targets.front()->id;
+      std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
-        std::uint64_t rhs_offset = targets.front()->id;
-        std::uint64_t lhs_offset = sequences.front()->id;
         for (const auto& jt : it.get()) {
-          std::cout << sequences[(jt.lhs_id >> 1) - lhs_offset]->name << "\t"
-                    << sequences[(jt.lhs_id >> 1) - lhs_offset]->data.size() << "\t"  // NOLINT
+          std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
+                    << sequences[jt.lhs_id - lhs_offset]->data.size() << "\t"
                     << jt.lhs_begin << "\t"
                     << jt.lhs_end << "\t"
-                    << (jt.lhs_id & 1 ? "+" : "-") << "\t"
+                    << (jt.strand ? "+" : "-") << "\t"
                     << targets[jt.rhs_id - rhs_offset]->name << "\t"
                     << targets[jt.rhs_id - rhs_offset]->data.size() << "\t"
                     << jt.rhs_begin << "\t"
