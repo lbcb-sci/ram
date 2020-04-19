@@ -62,7 +62,7 @@ target_link_libraries(<your_exe> ram)
 To build ram unit tests run the following commands:
 
 ```bash
-git clone https://github.com/lbcb-sci/ram.git ram
+git clone --recursive https://github.com/lbcb-sci/ram.git ram
 cd ram && mkdir build && cd build
 cmake -Dram_build_tests=ON -DCMAKE_BUILD_TYPE=Release .. && make
 ./bin/ram_test
