@@ -33,7 +33,8 @@ class MinimizerEngine {
   // transform set of sequences to minimizer index
   void Minimize(
       std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
-      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end);
+      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end,
+      bool micromize = false);
 
   // set occurrence frequency threshold
   void Filter(double frequency);

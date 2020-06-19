@@ -52,7 +52,8 @@ MinimizerEngine::MinimizerEngine(
 
 void MinimizerEngine::Minimize(
     std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
-    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end) {
+    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end,
+    bool micromize) {
 
   for (auto& it : minimizers_) {
     it.clear();
@@ -73,7 +74,7 @@ void MinimizerEngine::Minimize(
       futures.emplace_back(thread_pool_->Submit(
           [&] (std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator it)  // NOLINT
               -> std::vector<uint128_t> {
-            return Minimize(*it);
+            return Minimize(*it, micromize);
           },
           it));
     }
