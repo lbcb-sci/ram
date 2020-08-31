@@ -11,6 +11,7 @@
 #include <chrono>
 #include "ksw2.h"
 #include <iostream>
+#include <math.h>
 
 using namespace std;
 using namespace std::chrono;
