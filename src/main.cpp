@@ -26,6 +26,7 @@ static struct option options[] = {
   {"wildcards", required_argument, nullptr, 'W'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
+  {"rna", no_argument, nullptr, 'r'},
   {"help", no_argument, nullptr, 'h'},
   {nullptr, 0, nullptr, 0}
 };
@@ -86,6 +87,7 @@ void Help() {
       "    --wildcards <string>\n"
       "      default: 111111111111111\n"
       "      allow wildcards (0) in minimizers\n"
+      "    --rna\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -105,6 +107,7 @@ int main(int argc, char** argv) {
   std::string wildcards;
   std::uint64_t wildcard_mask = -1;
   std::uint32_t num_threads = 1;
+  std::uint32_t is_rna = 0;
 
   std::vector<std::string> input_paths;
 
@@ -117,6 +120,7 @@ int main(int argc, char** argv) {
       case 'f': frequency = std::atof(optarg); break;
       case 'm': micromize = true; break;
       case 'W': wildcards = optarg; break;
+      case 'r': is_rna = 1; break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << ram_version << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -173,12 +177,14 @@ int main(int argc, char** argv) {
 
   biosoup::Timer timer{};
 
+  auto byte_len = is_rna ? -1 : 1U << 30;
+
   while (true) {
     timer.Start();
 
     std::vector<std::unique_ptr<biosoup::Sequence>> targets;
     try {
-      targets = tparser->Parse(1U << 30);
+      targets = tparser->Parse(byte_len);
     } catch (std::invalid_argument& exception) {
       std::cerr << exception.what() << std::endl;
       return 1;
@@ -204,12 +210,14 @@ int main(int argc, char** argv) {
     std::uint64_t num_targets = biosoup::Sequence::num_objects;
     biosoup::Sequence::num_objects = 0;
 
+    bool should_print = true;
+
     while (true) {
       timer.Start();
 
       std::vector<std::unique_ptr<biosoup::Sequence>> sequences;
       try {
-        sequences = sparser->Parse(1U << 30);
+        sequences = sparser->Parse(byte_len);
       } catch (std::invalid_argument& exception) {
         std::cerr << exception.what() << std::endl;
         return 1;
@@ -219,52 +227,88 @@ int main(int argc, char** argv) {
         break;
       }
 
-      std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
-      for (const auto& it : sequences) {
-        futures.emplace_back(thread_pool->Submit(
-            [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
-                -> std::vector<biosoup::Overlap> {
-              return minimizer_engine.Map(sequence, is_ava, is_ava, micromize);
-            },
-            std::ref(it)));
-      }
-
-      biosoup::ProgressBar bar{
-          static_cast<std::uint32_t>(sequences.size()), 16};
-
-      for (auto& it : futures) {
-        std::uint64_t rhs_offset = targets.front()->id;
-        std::uint64_t lhs_offset = sequences.front()->id;
-        for (const auto& jt : it.get()) {
-          std::cout << sequences[(jt.lhs_id >> 1) - lhs_offset]->name << "\t"
-                    << sequences[(jt.lhs_id >> 1) - lhs_offset]->data.size() << "\t"  // NOLINT
-                    << jt.lhs_begin << "\t"
-                    << jt.lhs_end << "\t"
-                    << (jt.lhs_id & 1 ? "+" : "-") << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->name << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->data.size() << "\t"
-                    << jt.rhs_begin << "\t"
-                    << jt.rhs_end << "\t"
-                    << jt.score << "\t"
-                    << std::max(
-                          jt.lhs_end - jt.lhs_begin,
-                          jt.rhs_end - jt.rhs_begin) << "\t"
-                    << 255
-                    << std::endl;
+      if(is_rna) {
+        std::vector<std::future<std::string>> futures;
+        for (const auto& it : sequences) {
+          futures.emplace_back(thread_pool->Submit(
+              [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
+                  -> std::string {
+                  return minimizer_engine.MapRNA(sequence, is_ava, is_ava, should_print, targets, micromize);
+              },
+              std::ref(it)));
         }
 
-        if (++bar) {
-          std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
-                    << "[" << bar << "] "
-                    << std::fixed << timer.Lap() << "s"
-                    << "\r";
-        }
-      }
-      std::cerr << std::endl;
-      timer.Stop();
+        biosoup::ProgressBar bar{
+            static_cast<std::uint32_t>(sequences.size()), 16};
 
-      if (is_ava && biosoup::Sequence::num_objects == num_targets) {
-        break;
+        for (auto& it : futures) {
+          // for (const auto& jt : it.get()) {
+          std::cout << it.get();
+          // }
+
+          if (++bar) {
+            std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
+                      << "[" << bar << "] "
+                      << std::fixed << timer.Lap() << "s"
+                      << "\r";
+          }
+        }
+        std::cerr << std::endl;
+        timer.Stop();
+
+        should_print = true;
+
+        if (is_ava && biosoup::Sequence::num_objects == num_targets) {
+          break;
+        }
+      } else {
+        std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
+        for (const auto& it : sequences) {
+          futures.emplace_back(thread_pool->Submit(
+              [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
+                  -> std::vector<biosoup::Overlap> {
+                  return minimizer_engine.Map(sequence, is_ava, is_ava, micromize);
+              },
+              std::ref(it)));
+        }
+
+        biosoup::ProgressBar bar{
+            static_cast<std::uint32_t>(sequences.size()), 16};
+
+        for (auto& it : futures) {
+          std::uint64_t rhs_offset = targets.front()->id;
+          std::uint64_t lhs_offset = sequences.front()->id;
+          for (const auto& jt : it.get()) {
+            std::cout << sequences[(jt.lhs_id >> 1) - lhs_offset]->name << "\t"
+                      << sequences[(jt.lhs_id >> 1) - lhs_offset]->data.size() << "\t"  // NOLINT
+                      << jt.lhs_begin << "\t"
+                      << jt.lhs_end << "\t"
+                      << (jt.lhs_id & 1 ? "+" : "-") << "\t"
+                      << targets[jt.rhs_id - rhs_offset]->name << "\t"
+                      << targets[jt.rhs_id - rhs_offset]->data.size() << "\t"
+                      << jt.rhs_begin << "\t"
+                      << jt.rhs_end << "\t"
+                      << jt.score << "\t"
+                      << std::max(
+                            jt.lhs_end - jt.lhs_begin,
+                            jt.rhs_end - jt.rhs_begin) << "\t"
+                      << 255
+                      << std::endl;
+          }
+
+          if (++bar) {
+            std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
+                      << "[" << bar << "] "
+                      << std::fixed << timer.Lap() << "s"
+                      << "\r";
+          }
+        }
+        std::cerr << std::endl;
+        timer.Stop();
+
+        if (is_ava && biosoup::Sequence::num_objects == num_targets) {
+          break;
+        }
       }
     }
 

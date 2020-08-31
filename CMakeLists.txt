@@ -19,7 +19,7 @@ endif ()
 if (NOT TARGET thread_pool)
   add_subdirectory(vendor/thread_pool EXCLUDE_FROM_ALL)
 endif ()
-add_library(${PROJECT_NAME} src/minimizer_engine.cpp)
+add_library(${PROJECT_NAME} src/minimizer_engine.cpp src/ksw2_extd2_sse.cc src/ksw2_exts2_sse.cc src/ksw2_extz2_sse.cc)
 target_link_libraries(${PROJECT_NAME} biosoup thread_pool)
 
 target_include_directories(${PROJECT_NAME}

@@ -47,6 +47,15 @@ class MinimizerEngine {
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
       bool micromize = false) const;  // only lhs
 
+// method for mapping RNA reads
+   std::string MapRNA(
+      const std::unique_ptr<biosoup::Sequence>& sequence,
+      bool avoid_equal,  // ignore overaps in which lhs_id == rhs_id
+      bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
+      bool should_print,
+      std::vector<std::unique_ptr<biosoup::Sequence>> &targets,
+      bool micromize = false) const;  // only lhs
+
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
       const std::unique_ptr<biosoup::Sequence>& lhs,
@@ -64,6 +73,8 @@ class MinimizerEngine {
   std::vector<biosoup::Overlap> Chain(
       std::uint64_t lhs_id,
       std::vector<uint128_t>&& matches) const;
+
+std::vector<biosoup::Overlap> ChainRNA(std::uint64_t lhs_id, std::vector<uint128_t> matches) const;
 
   // Minimizer = [127:64] kmer
   //             [63:32] id
