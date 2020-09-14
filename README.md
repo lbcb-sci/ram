@@ -32,7 +32,7 @@ usage: ram [options ...] <target> [<sequences>]
     -f, --frequency-threshold <float>
       default: 0.001
       threshold for ignoring most frequent minimizers
-    -m, --micromize
+    -m, --minhash
       use only a portion of all minimizers
     -t, --threads <int>
       default: 1

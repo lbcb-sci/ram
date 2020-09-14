@@ -18,7 +18,7 @@ namespace ram {
 class MinimizerEngine {
  public:
   MinimizerEngine(
-      std::uint32_t kmer_len,  // element of [1, 32]
+      std::uint32_t kmer_len,  // element of [1, 31]
       std::uint32_t window_len,
       std::shared_ptr<thread_pool::ThreadPool> thread_pool = nullptr);
 
@@ -31,67 +31,142 @@ class MinimizerEngine {
   ~MinimizerEngine() = default;
 
   // transform set of sequences to minimizer index
+  // minhash = pick only the smallest sequence->data.size() / k minimizers
   void Minimize(
-      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
-      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end,
-      bool micromize = false);
+      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator first,
+      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator last,
+      bool minhash = false);
 
   // set occurrence frequency threshold
   void Filter(double frequency);
 
   // find overlaps in preconstructed minimizer index
-  // micromizers = smallest sequence->data.size() / k minimizers
   std::vector<biosoup::Overlap> Map(
       const std::unique_ptr<biosoup::Sequence>& sequence,
       bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
-      bool micromize = false) const;  // only lhs
+      bool minhash = false) const;  // only lhs
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
       const std::unique_ptr<biosoup::Sequence>& lhs,
       const std::unique_ptr<biosoup::Sequence>& rhs,
-      bool micromize = false) const;  // only lhs
+      bool minhash = false) const;  // only lhs
 
  private:
-  using uint128_t = std::pair<std::uint64_t, std::uint64_t>;
+  struct Kmer {
+   public:
+    Kmer() = default;
+    Kmer(std::uint64_t value, std::uint64_t origin)
+        : value(value),
+          origin(origin) {
+    }
 
-  // Match = [127:97] rhs_id
-  //         [96:96] strand
-  //         [95:64] rhs_pos +- lhs_pos
-  //         [63:32] lhs_pos
-  //         [31:0] rhs_pos
+    std::uint32_t id() const {
+      return static_cast<std::uint32_t>(origin >> 32);
+    }
+
+    std::uint32_t position() const {
+      return static_cast<std::uint32_t>(origin) >> 1;
+    }
+
+    bool strand() const {
+      return origin & 1;
+    }
+
+    static std::uint64_t SortByValue(const Kmer& kmer) {
+      return kmer.value;
+    }
+
+    std::uint64_t value;
+    std::uint64_t origin;
+  };
+
+  struct Match {
+   public:
+    Match() = default;
+    Match(std::uint64_t group, std::uint64_t positions)
+        : group(group),
+          positions(positions) {
+    }
+
+    std::uint32_t rhs_id() const {
+      return static_cast<std::uint32_t>(group >> 33);
+    }
+
+    bool strand() const {
+      return (group >> 32) & 1;
+    }
+
+    std::uint32_t diagonal() const {
+      return static_cast<std::uint32_t>(group);
+    }
+
+    std::uint32_t lhs_position() const {
+      return static_cast<std::uint32_t>(positions >> 32);
+    }
+
+    std::uint32_t rhs_position() const {
+      return static_cast<std::uint32_t>(positions);
+    }
+
+    static std::uint64_t SortByGroup(const Match& match) {
+      return match.group;
+    }
+    static std::uint64_t SortByPositions(const Match& match) {
+      return match.positions;
+    }
+
+    std::uint64_t group;
+    std::uint64_t positions;
+  };
+
+  class Index {
+   public:
+    Index() = default;
+
+    std::uint32_t Find(std::uint64_t key, const std::uint64_t** dst) const;
+
+    struct Hash {
+      std::size_t operator()(std::uint64_t key) const {
+        return std::hash<std::uint64_t>()(key >> 1);
+      }
+    };
+    struct KeyEqual {
+      bool operator()(std::uint64_t lhs, std::uint64_t rhs) const {
+        return (lhs >> 1) == (rhs >> 1);
+      }
+    };
+
+    std::vector<std::uint64_t> origins;
+    std::unordered_map<std::uint64_t, std::uint64_t, Hash, KeyEqual> locator;
+  };
+
+  std::vector<Kmer> Minimize(
+      const std::unique_ptr<biosoup::Sequence>& sequence,
+      bool minhash = false) const;
+
   std::vector<biosoup::Overlap> Chain(
       std::uint64_t lhs_id,
-      std::vector<uint128_t>&& matches) const;
+      std::vector<Match>&& matches) const;
 
-  // Minimizer = [127:64] kmer
-  //             [63:32] id
-  //             [31:1] pos
-  //             [1:1] strand
-  std::vector<uint128_t> Minimize(
-      const std::unique_ptr<biosoup::Sequence>& sequence,
-      bool micromize = false) const;
-
-  template<typename T>
-  static void RadixSort(  // any uint128_t
-      std::vector<uint128_t>::iterator begin,
-      std::vector<uint128_t>::iterator end,
+  template<typename RandomAccessIterator, typename Compare>
+  static void RadixSort(
+      RandomAccessIterator first,
+      RandomAccessIterator last,
       std::uint8_t max_bits,
-      T compare);  //  unary comparison function
+      Compare comp);  //  unary comparison function
 
-  template<typename T>
-  static std::vector<std::uint64_t> LongestSubsequence(  // only Match
-      std::vector<uint128_t>::const_iterator begin,
-      std::vector<uint128_t>::const_iterator end,
-      T compare);  // binary comparison function
+  template<typename Compare>
+  static std::vector<std::uint64_t> LongestSubsequence(
+      std::vector<Match>::const_iterator first,
+      std::vector<Match>::const_iterator last,
+      Compare comp);  // binary comparison function
 
   std::uint32_t k_;
   std::uint32_t w_;
   std::uint32_t occurrence_;
-  std::vector<std::vector<uint128_t>> minimizers_;
-  std::vector<std::unordered_map<  // kmer -> (begin, count)
-      std::uint64_t, std::pair<std::uint32_t, std::uint32_t>>> index_;
+  std::vector<Index> index_;
   std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
 };
 

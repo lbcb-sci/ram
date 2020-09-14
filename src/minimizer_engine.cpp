@@ -5,18 +5,6 @@
 #include <deque>
 #include <stdexcept>
 
-namespace {
-
-static std::uint64_t First(const std::pair<std::uint64_t, std::uint64_t>& pr) {
-  return pr.first;
-}
-
-static std::uint64_t Second(const std::pair<std::uint64_t, std::uint64_t>& pr) {
-  return pr.second;
-}
-
-}  // namespace
-
 namespace ram {
 
 const std::vector<std::uint64_t> kCoder = {
@@ -41,84 +29,132 @@ MinimizerEngine::MinimizerEngine(
     std::uint32_t kmer_len,
     std::uint32_t window_len,
     std::shared_ptr<thread_pool::ThreadPool> thread_pool)
-    : k_(std::min(std::max(kmer_len, 1U), 32U)),
+    : k_(std::min(std::max(kmer_len, 1U), 31U)),
       w_(window_len),
       occurrence_(-1),
-      minimizers_(1U << std::min(14U, 2 * k_)),
-      index_(minimizers_.size()),
+      index_(1U << std::min(14U, 2 * k_)),
       thread_pool_(thread_pool ?
           thread_pool :
           std::make_shared<thread_pool::ThreadPool>(1)) {}
 
+std::uint32_t MinimizerEngine::Index::Find(
+    std::uint64_t key,
+    const std::uint64_t** dst) const {
+  auto it = locator.find(key << 1);
+  if (it == locator.end()) {
+    return 0;
+  }
+  if (it->first & 1) {
+    *dst = &(it->second);
+    return 1;
+  }
+  *dst = &(origins[it->second >> 32]);
+  return static_cast<std::uint32_t>(it->second);
+}
+
 void MinimizerEngine::Minimize(
-    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator begin,
-    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator end,
-    bool micromize) {
+    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator first,
+    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator last,
+    bool minhash) {
 
-  for (auto& it : minimizers_) {
-    it.clear();
-  }
   for (auto& it : index_) {
-    it.clear();
+    it.origins.clear();
+    it.locator.clear();
   }
 
-  if (begin >= end) {
+  if (first >= last) {
     return;
   }
 
+  std::vector<std::vector<Kmer>> minimizers(index_.size());
   {
-    std::uint64_t bin_mask = minimizers_.size() - 1;
+    std::uint64_t mask = index_.size() - 1;
 
-    std::vector<std::future<std::vector<uint128_t>>> futures;
-    for (auto it = begin; it != end; ++it) {
-      futures.emplace_back(thread_pool_->Submit(
-          [&] (std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator it)  // NOLINT
-              -> std::vector<uint128_t> {
-            return Minimize(*it, micromize);
-          },
-          it));
-    }
-    for (auto& it : futures) {
-      for (const auto& jt : it.get()) {
-        minimizers_[jt.first & bin_mask].emplace_back(jt);
+    while (first != last) {
+      std::size_t batch_size = 0;
+      std::vector<std::future<std::vector<Kmer>>> futures;
+      for (; first != last && batch_size < 50000000; ++first) {
+        batch_size += (*first)->data.size();
+        futures.emplace_back(thread_pool_->Submit(
+            [&] (decltype(first) it) -> std::vector<Kmer> {
+              return Minimize(*it, minhash);
+            },
+            first));
+      }
+      for (auto& it : futures) {
+        for (const auto& jt : it.get()) {
+          auto& m = minimizers[jt.value & mask];
+          if (m.capacity() == m.size()) {
+            m.reserve(m.capacity() * 1.5);
+          }
+          m.emplace_back(jt);
+        }
       }
     }
   }
 
   {
-    std::vector<std::future<void>> futures;
-    for (std::uint32_t i = 0; i < minimizers_.size(); ++i) {
-      if (minimizers_[i].empty()) {
-        continue;
-      }
-
+    std::vector<std::future<std::pair<std::size_t, std::size_t>>> futures;
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
       futures.emplace_back(thread_pool_->Submit(
-          [&] (std::uint32_t bin) -> void{
-            RadixSort(
-                minimizers_[bin].begin(),
-                minimizers_[bin].end(),
-                k_ * 2,
-                ::First);
+          [&] (std::uint32_t i) -> std::pair<std::size_t, std::size_t> {
+            if (minimizers[i].empty()) {
+              return std::make_pair(0, 0);
+            }
 
-            for (std::uint64_t i = 0, c = 0; i < minimizers_[bin].size(); ++i) {
-              if (i > 0 && minimizers_[bin][i - 1].first != minimizers_[bin][i].first) {  // NOLINT
-                index_[bin].emplace(
-                    minimizers_[bin][i - 1].first,
-                    std::make_pair(i - c, c));
+            RadixSort(
+                minimizers[i].begin(),
+                minimizers[i].end(),
+                k_ * 2,
+                Kmer::SortByValue);
+
+            minimizers[i].emplace_back(-1, -1);  // stop dummy
+
+            std::size_t num_origins = 0;
+            std::size_t num_keys = 0;
+
+            for (std::uint64_t j = 1, c = 1; j < minimizers[i].size(); ++j, ++c) {  // NOLINT
+              if (minimizers[i][j - 1].value != minimizers[i][j].value) {
+                if (c > 1) {
+                  num_origins += c;
+                }
+                ++num_keys;
                 c = 0;
               }
-              if (i == minimizers_[bin].size() - 1) {
-                index_[bin].emplace(
-                    minimizers_[bin][i].first,
-                    std::make_pair(i - c, c + 1));
-              }
-              ++c;
             }
+
+            return std::make_pair(num_origins, num_keys);
           },
           i));
     }
-    for (const auto& it : futures) {
-      it.wait();
+    for (std::uint32_t i = 0; i < minimizers.size(); ++i) {
+      auto num_entries = futures[i].get();
+      if (minimizers[i].empty()) {
+        continue;
+      }
+
+      index_[i].origins.reserve(num_entries.first);
+      index_[i].locator.reserve(num_entries.second);
+
+      for (std::uint64_t j = 1, c = 1; j < minimizers[i].size(); ++j, ++c) {
+        if (minimizers[i][j - 1].value != minimizers[i][j].value) {
+          if (c == 1) {
+            index_[i].locator.emplace(
+                minimizers[i][j - 1].value << 1 | 1,
+                minimizers[i][j - 1].origin);
+          } else {
+            index_[i].locator.emplace(
+                minimizers[i][j - 1].value << 1,
+                index_[i].origins.size() << 32 | c);
+            for (std::uint64_t k = j - c; k < j; ++k) {
+              index_[i].origins.emplace_back(minimizers[i][k].origin);
+            }
+          }
+          c = 0;
+        }
+      }
+
+      std::vector<Kmer>().swap(minimizers[i]);
     }
   }
 }
@@ -136,8 +172,12 @@ void MinimizerEngine::Filter(double frequency) {
 
   std::vector<std::uint32_t> occurrences;
   for (const auto& it : index_) {
-    for (const auto& jt : it) {
-      occurrences.emplace_back(jt.second.second);
+    for (const auto& jt : it.locator) {
+      if (jt.first & 1) {
+        occurrences.emplace_back(1);
+      } else {
+        occurrences.emplace_back(static_cast<std::uint32_t>(jt.second));
+      }
     }
   }
 
@@ -157,43 +197,50 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     const std::unique_ptr<biosoup::Sequence>& sequence,
     bool avoid_equal,
     bool avoid_symmetric,
-    bool micromize) const {
-
-  auto sketch = Minimize(sequence, micromize);
+    bool minhash) const {
+  auto sketch = Minimize(sequence, minhash);
   if (sketch.empty()) {
     return std::vector<biosoup::Overlap>{};
   }
 
-  std::uint64_t bin_mask = minimizers_.size() - 1;
-  std::vector<uint128_t> matches;
+  auto id = [] (std::uint64_t origin) -> std::uint32_t {
+    return static_cast<std::uint32_t>(origin >> 32);
+  };
+  auto position = [] (std::uint64_t origin) -> std::uint32_t {
+    return static_cast<std::uint32_t>(origin) >> 1;
+  };
+  auto strand = [] (std::uint64_t origin) -> bool {
+    return origin & 1;
+  };
+
+  std::uint64_t mask = index_.size() - 1;
+  std::vector<Match> matches;
   for (const auto& it : sketch) {
-    std::uint32_t bin = it.first & bin_mask;
-    auto match = index_[bin].find(it.first);
-    if (match == index_[bin].end() || match->second.second > occurrence_) {
+    std::uint32_t i = it.value & mask;
+    const uint64_t* jt = nullptr;
+    auto n = index_[i].Find(it.value, &jt);
+    if (n == 0 || n > occurrence_) {
       continue;
     }
 
-    auto jt = minimizers_[bin].begin() + match->second.first;
-    auto end = jt + match->second.second;
-    for (; jt != end; ++jt) {
-      std::uint64_t rhs_id = jt->second >> 32;
-      if (avoid_equal && static_cast<std::uint64_t>(sequence->id) == rhs_id) {
+    for (std::uint32_t j = 0; j < n; ++j, ++jt) {
+      if (avoid_equal && sequence->id == id(*jt)) {
         continue;
       }
-      if (avoid_symmetric && static_cast<std::uint64_t>(sequence->id) > rhs_id) {  // NOLINT
+      if (avoid_symmetric && sequence->id > id(*jt)) {
         continue;
       }
 
-      std::uint64_t strand = (it.second & 1) == (jt->second & 1);
-      std::uint64_t lhs_pos = it.second << 32 >> 33;
-      std::uint64_t rhs_pos = jt->second << 32 >> 33;
-
-      std::uint64_t diagonal = !strand ?
+      std::uint64_t rhs_id = id(*jt);
+      std::uint64_t strand_ = it.strand() == strand(*jt);
+      std::uint64_t lhs_pos = it.position();
+      std::uint64_t rhs_pos = position(*jt);
+      std::uint64_t diagonal = !strand_ ?
           rhs_pos + lhs_pos :
           rhs_pos - lhs_pos + (3ULL << 30);
 
       matches.emplace_back(
-          (((rhs_id << 1) | strand) << 32) | diagonal,
+          (((rhs_id << 1) | strand_) << 32) | diagonal,
           (lhs_pos << 32) | rhs_pos);
     }
   }
@@ -204,9 +251,9 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
 std::vector<biosoup::Overlap> MinimizerEngine::Map(
     const std::unique_ptr<biosoup::Sequence>& lhs,
     const std::unique_ptr<biosoup::Sequence>& rhs,
-    bool micromize) const {
+    bool minhash) const {
 
-  auto lhs_sketch = Minimize(lhs, micromize);
+  auto lhs_sketch = Minimize(lhs, minhash);
   if (lhs_sketch.empty()) {
     return std::vector<biosoup::Overlap>{};
   }
@@ -216,26 +263,26 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     return std::vector<biosoup::Overlap>{};
   }
 
-  RadixSort(lhs_sketch.begin(), lhs_sketch.end(), k_ * 2, ::First);
-  RadixSort(rhs_sketch.begin(), rhs_sketch.end(), k_ * 2, ::First);
+  RadixSort(lhs_sketch.begin(), lhs_sketch.end(), k_ * 2, Kmer::SortByValue);
+  RadixSort(rhs_sketch.begin(), rhs_sketch.end(), k_ * 2, Kmer::SortByValue);
 
   std::uint64_t rhs_id = rhs->id;
 
-  std::vector<uint128_t> matches;
+  std::vector<Match> matches;
   for (std::uint32_t i = 0, j = 0; i < lhs_sketch.size(); ++i) {
     while (j < rhs_sketch.size()) {
-      if (lhs_sketch[i].first < rhs_sketch[j].first) {
+      if (lhs_sketch[i].value < rhs_sketch[j].value) {
         break;
-      } else if (lhs_sketch[i].first == rhs_sketch[j].first) {
+      } else if (lhs_sketch[i].value == rhs_sketch[j].value) {
         for (std::uint32_t k = j; k < rhs_sketch.size(); ++k) {
-          if (lhs_sketch[i].first != rhs_sketch[k].first) {
+          if (lhs_sketch[i].value != rhs_sketch[k].value) {
             break;
           }
 
           std::uint64_t strand =
-              (lhs_sketch[i].second & 1) == (rhs_sketch[k].second & 1);
-          std::uint64_t lhs_pos = lhs_sketch[i].second << 32 >> 33;
-          std::uint64_t rhs_pos = rhs_sketch[k].second << 32 >> 33;
+              (lhs_sketch[i].strand() & 1) == (rhs_sketch[k].strand() & 1);
+          std::uint64_t lhs_pos = lhs_sketch[i].position();
+          std::uint64_t rhs_pos = rhs_sketch[k].position();
           std::uint64_t diagonal = !strand ?
               rhs_pos + lhs_pos :
               rhs_pos - lhs_pos + (3ULL << 30);
@@ -256,14 +303,13 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
 
 std::vector<biosoup::Overlap> MinimizerEngine::Chain(
     std::uint64_t lhs_id,
-    std::vector<uint128_t>&& matches) const {
-
-  RadixSort(matches.begin(), matches.end(), 64, ::First);
+    std::vector<Match>&& matches) const {
+  RadixSort(matches.begin(), matches.end(), 64, Match::SortByGroup);
   matches.emplace_back(-1, -1);  // stop dummy
 
-  std::vector<uint128_t> intervals;
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> intervals;
   for (std::uint64_t i = 1, j = 0; i < matches.size(); ++i) {  // NOLINT
-    if (matches[i].first - matches[j].first > 500) {
+    if (matches[i].group - matches[j].group > 500) {
       if (i - j >= 4) {
         if (!intervals.empty() && intervals.back().second > j) {  // extend
           intervals.back().second = i;
@@ -272,7 +318,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
         }
       }
       ++j;
-      while (j < i && matches[i].first - matches[j].first > 500) {
+      while (j < i && matches[i].group - matches[j].group > 500) {
         ++j;
       }
     }
@@ -287,9 +333,13 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
       continue;
     }
 
-    RadixSort(matches.begin() + j, matches.begin() + i, 64, ::Second);
+    RadixSort(
+        matches.begin() + j,
+        matches.begin() + i,
+        64,
+        Match::SortByPositions);
 
-    std::uint64_t strand = matches[j].first >> 32 & 1;
+    std::uint64_t strand = matches[j].strand();
 
     std::vector<std::uint64_t> indices;
     if (strand) {  // same strand
@@ -310,8 +360,8 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
 
     indices.emplace_back(matches.size() - 1 - j);  // stop dummy from above
     for (std::uint64_t k = 1, l = 0; k < indices.size(); ++k) {
-      if ((matches[j + indices[k]].second >> 32) -
-          (matches[j + indices[k - 1]].second >> 32) > 10000ULL) {
+      if (matches[j + indices[k]].lhs_position() -
+          matches[j + indices[k - 1]].lhs_position() > 10000ULL) {
         if (k - l < 4) {
           l = k;
           continue;
@@ -325,14 +375,14 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
         std::uint32_t rhs_end = 0;
 
         for (std::uint64_t m = l; m < k; ++m) {
-          std::uint32_t lhs_pos = matches[j + indices[m]].second >> 32;
+          std::uint32_t lhs_pos = matches[j + indices[m]].lhs_position();
           if (lhs_pos > lhs_end) {
             lhs_matches += lhs_end - lhs_begin;
             lhs_begin = lhs_pos;
           }
           lhs_end = lhs_pos + k_;
 
-          std::uint32_t rhs_pos = matches[j + indices[m]].second << 32 >> 32;
+          std::uint32_t rhs_pos = matches[j + indices[m]].rhs_position();
           rhs_pos = strand ? rhs_pos : (1U << 31) - (rhs_pos + k_ - 1);
           if (rhs_pos > rhs_end) {
             rhs_matches += rhs_end - rhs_begin;
@@ -349,16 +399,16 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
 
         dst.emplace_back(
             lhs_id,
-            matches[j + indices[l]].second >> 32,  // lhs_begin
-            k_ + (matches[j + indices[k - 1]].second >> 32),  // lhs_end
-            matches[j].first >> 33,  // rhs_id
-            strand ?  // rhs_begin
-                matches[j + indices[l]].second << 32 >> 32 :
-                matches[j + indices[k - 1]].second << 32 >> 32,
-            k_ + (strand ?  // rhs_end
-                matches[j + indices[k - 1]].second << 32 >> 32 :
-                matches[j + indices[l]].second << 32 >> 32),
-            std::min(lhs_matches, rhs_matches),  // score
+            matches[j + indices[l]].lhs_position(),
+            k_ + matches[j + indices[k - 1]].lhs_position(),
+            matches[j].rhs_id(),
+            strand ?
+                matches[j + indices[l]].rhs_position() :
+                matches[j + indices[k - 1]].rhs_position(),
+            k_ + (strand ?
+                matches[j + indices[k - 1]].rhs_position() :
+                matches[j + indices[l]].rhs_position()),
+            std::min(lhs_matches, rhs_matches),
             strand);
 
         l = k;
@@ -368,12 +418,11 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
   return dst;
 }
 
-std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
+std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     const std::unique_ptr<biosoup::Sequence>& sequence,
-    bool micromize) const {
-
+    bool minhash) const {
   if (sequence->data.size() < k_) {
-    return std::vector<uint128_t>{};
+    return std::vector<Kmer>{};
   }
 
   std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
@@ -389,15 +438,15 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
     return key;
   };
 
-  std::deque<uint128_t> window;
-  auto window_add = [&] (std::uint64_t minimizer, std::uint64_t location) -> void {  // NOLINT
-    while (!window.empty() && window.back().first > minimizer) {
+  std::deque<Kmer> window;
+  auto window_add = [&] (std::uint64_t value, std::uint64_t location) -> void {
+    while (!window.empty() && window.back().value > value) {
       window.pop_back();
     }
-    window.emplace_back(minimizer, location);
+    window.emplace_back(value, location);
   };
   auto window_update = [&] (std::uint32_t position) -> void {
-    while (!window.empty() && (window.front().second << 32 >> 33) < position) {
+    while (!window.empty() && (window.front().position()) < position) {
       window.pop_front();
     }
   };
@@ -408,7 +457,7 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
   std::uint64_t id = static_cast<std::uint64_t>(sequence->id) << 32;
   std::uint64_t is_stored = 1ULL << 63;
 
-  std::vector<uint128_t> dst;
+  std::vector<Kmer> dst;
 
   for (std::uint32_t i = 0; i < sequence->data.size(); ++i) {
     std::uint64_t c = kCoder[sequence->data[i]];
@@ -427,96 +476,92 @@ std::vector<MinimizerEngine::uint128_t> MinimizerEngine::Minimize(
     }
     if (i >= (k_ - 1U) + (w_ - 1U)) {
       for (auto it = window.begin(); it != window.end(); ++it) {
-        if (it->first != window.front().first) {
+        if (it->value != window.front().value) {
           break;
         }
-        if (it->second & is_stored) {
+        if (it->origin & is_stored) {
           continue;
         }
-        dst.emplace_back(it->first, id | it->second);
-        it->second |= is_stored;
+        dst.emplace_back(it->value, id | it->origin);
+        it->origin |= is_stored;
       }
       window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
     }
   }
 
-  if (micromize) {
-    RadixSort(dst.begin(), dst.end(), k_ * 2, ::First);
+  if (minhash) {
+    RadixSort(dst.begin(), dst.end(), k_ * 2, Kmer::SortByValue);
     dst.resize(sequence->data.size() / k_);
   }
 
   return dst;
 }
 
-template<typename T>
+template<typename RandomAccessIterator, typename Compare>
 void MinimizerEngine::RadixSort(
-    std::vector<uint128_t>::iterator begin,
-    std::vector<uint128_t>::iterator end,
+    RandomAccessIterator first,
+    RandomAccessIterator last,
     std::uint8_t max_bits,
-    T compare) {  //  unary comparison function
-
-  if (begin >= end) {
+    Compare comp) {  //  unary comparison function
+  if (first >= last) {
     return;
   }
 
-  std::vector<MinimizerEngine::uint128_t> dst(end - begin);
-  auto dst_begin = dst.begin();
-  auto dst_end = dst.end();
+  std::vector<typename std::iterator_traits<RandomAccessIterator>::value_type> tmp(last - first);  // NOLINT
+  auto begin = tmp.begin();
+  auto end = tmp.end();
 
   std::uint64_t buckets[0x100]{};  // 256 b
   std::uint8_t shift = 0;
   for (; shift < max_bits; shift += 8) {
     std::uint64_t counts[0x100]{};
-    for (auto it = begin; it != end; ++it) {
-      ++counts[compare(*it) >> shift & 0xFF];
+    for (auto it = first; it != last; ++it) {
+      ++counts[comp(*it) >> shift & 0xFF];
     }
     for (std::uint64_t i = 0, j = 0; i < 0x100; j += counts[i++]) {
       buckets[i] = j;
     }
-    for (auto it = begin; it != end; ++it) {
-      *(dst_begin + buckets[compare(*it) >> shift & 0xFF]++) = *it;
+    for (auto it = first; it != last; ++it) {
+      *(begin + buckets[comp(*it) >> shift & 0xFF]++) = *it;
     }
-    std::swap(dst_begin, begin);
-    std::swap(dst_end, end);
+    std::swap(begin, first);
+    std::swap(end, last);
   }
 
   if (shift / 8 & 1) {  // copy the sorted array for odd cases
-    for (; begin != end; ++begin, ++dst_begin) {
-      *dst_begin = *begin;
+    for (; first != last; ++first, ++begin) {
+      *begin = *first;
     }
   }
 }
 
-template<typename T>
+template<typename Compare>
 std::vector<std::uint64_t> MinimizerEngine::LongestSubsequence(
-    std::vector<uint128_t>::const_iterator begin,
-    std::vector<uint128_t>::const_iterator end,
-    T compare) {  // binary comparison function
-
-  if (begin >= end) {
+    std::vector<Match>::const_iterator first,
+    std::vector<Match>::const_iterator last,
+    Compare comp) {  // binary comparison function
+  if (first >= last) {
     return std::vector<std::uint64_t>{};
   }
 
-  std::vector<std::uint64_t> minimal(end - begin + 1, 0);
-  std::vector<std::uint64_t> predecessor(end - begin, 0);
+  std::vector<std::uint64_t> minimal(last - first + 1, 0);
+  std::vector<std::uint64_t> predecessor(last - first, 0);
 
   std::uint64_t longest = 0;
-  for (auto it = begin; it != end; ++it) {
+  for (auto it = first; it != last; ++it) {
     std::uint64_t lo = 1, hi = longest;
     while (lo <= hi) {
       std::uint64_t mid = lo + (hi - lo) / 2;
-      if (((begin + minimal[mid])->second >> 32) < (it->second >> 32) &&
-          compare(
-              (begin + minimal[mid])->second << 32 >> 32,
-              it->second << 32 >> 32)) {
+      if ((first + minimal[mid])->lhs_position() < it->lhs_position() &&
+          comp((first + minimal[mid])->rhs_position(), it->rhs_position())) {
         lo = mid + 1;
       } else {
         hi = mid - 1;
       }
     }
 
-    predecessor[it - begin] = minimal[lo - 1];
-    minimal[lo] = it - begin;
+    predecessor[it - first] = minimal[lo - 1];
+    minimal[lo] = it - first;
     longest = std::max(longest, lo);
   }
 

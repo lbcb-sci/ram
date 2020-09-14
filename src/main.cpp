@@ -23,7 +23,7 @@ static struct option options[] = {
   {"kmer-length", required_argument, nullptr, 'k'},
   {"window-length", required_argument, nullptr, 'w'},
   {"frequency-threshold", required_argument, nullptr, 'f'},
-  {"micromize", no_argument, nullptr, 'm'},
+  {"minhash", no_argument, nullptr, 'm'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -81,7 +81,7 @@ void Help() {
       "    -f, --frequency-threshold <float>\n"
       "      default: 0.001\n"
       "      threshold for ignoring most frequent minimizers\n"
-      "    -m, --micromize\n"
+      "    -m, --minhash\n"
       "      use only a portion of all minimizers\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
@@ -98,7 +98,7 @@ int main(int argc, char** argv) {
   std::uint32_t k = 15;
   std::uint32_t w = 5;
   double frequency = 0.001;
-  bool micromize = false;
+  bool minhash = false;
   std::uint32_t num_threads = 1;
 
   std::vector<std::string> input_paths;
@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
       case 'k': k = std::atoi(optarg); break;
       case 'w': w = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
-      case 'm': micromize = true; break;
+      case 'm': minhash = true; break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << ram_version << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
 
     std::vector<std::unique_ptr<biosoup::Sequence>> targets;
     try {
-      targets = tparser->Parse(1U << 30);
+      targets = tparser->Parse(1ULL << 32);
     } catch (std::invalid_argument& exception) {
       std::cerr << exception.what() << std::endl;
       return 1;
@@ -176,7 +176,7 @@ int main(int argc, char** argv) {
 
     timer.Start();
 
-    minimizer_engine.Minimize(targets.begin(), targets.end());
+    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash);
     minimizer_engine.Filter(frequency);
 
     std::cerr << "[ram::] minimized targets "
@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
         futures.emplace_back(thread_pool->Submit(
             [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
                 -> std::vector<biosoup::Overlap> {
-              return minimizer_engine.Map(sequence, is_ava, is_ava, micromize);
+              return minimizer_engine.Map(sequence, is_ava, is_ava, minhash);
             },
             std::ref(it)));
       }
