@@ -23,7 +23,7 @@ class RamMinimizerEngineTest: public ::testing::Test {
 };
 
 TEST_F(RamMinimizerEngineTest, Map) {
-  MinimizerEngine me{15, 5};
+  MinimizerEngine me{};
   me.Minimize(s.begin(), s.end());
   me.Filter(0.001);
 
@@ -77,7 +77,7 @@ TEST_F(RamMinimizerEngineTest, Map) {
 }
 
 TEST_F(RamMinimizerEngineTest, Pair) {
-  MinimizerEngine me{15, 5};
+  MinimizerEngine me{};
   auto o = me.Map(s.front(), s.back());
   EXPECT_EQ(1, o.size());
   EXPECT_EQ(0, o.front().lhs_id);
@@ -131,7 +131,7 @@ TEST_F(RamMinimizerEngineTest, Filter) {
 }
 
 TEST_F(RamMinimizerEngineTest, Micromize) {
-  MinimizerEngine me{15, 5};
+  MinimizerEngine me{};
   me.Minimize(s.begin(), s.end());
   auto o = me.Map(s.front(), true, true, true);
   EXPECT_EQ(1, o.size());

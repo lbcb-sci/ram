@@ -22,6 +22,10 @@ const char* ram_version = RAM_VERSION;
 static struct option options[] = {
   {"kmer-length", required_argument, nullptr, 'k'},
   {"window-length", required_argument, nullptr, 'w'},
+  {"bandwidth", required_argument, nullptr, 'b'},
+  {"chain-length", required_argument, nullptr, 'c'},
+  {"matches-length", required_argument, nullptr, 'l'},
+  {"gap-length", required_argument, nullptr, 'g'},
   {"frequency-threshold", required_argument, nullptr, 'f'},
   {"minhash", no_argument, nullptr, 'm'},
   {"threads", required_argument, nullptr, 't'},
@@ -77,7 +81,19 @@ void Help() {
       "      length of minimizers\n"
       "    -w, --window-length <int>\n"
       "      default: 5\n"
-      "      length of sliding window from which minimizers are found\n"
+      "      length of sliding window from which minimizers are sampled\n"
+      "    -b, --bandwidth <int>\n"
+      "      default: 500\n"
+      "      size of bandwidth in which minimizer hits can be chained\n"
+      "    -c, --chain-length <int>\n"
+      "      default: 4\n"
+      "      minimal number of chained minimizer hits in overlap\n"
+      "    -l, --matches-length\n"
+      "      default: 100\n"
+      "      minimal number of matching bases in overlap\n"
+      "    -g, --gap-length\n"
+      "      default: 10000\n"
+      "      maximal gap between minimizer hits in a chain\n"
       "    -f, --frequency-threshold <float>\n"
       "      default: 0.001\n"
       "      threshold for ignoring most frequent minimizers\n"
@@ -97,18 +113,26 @@ void Help() {
 int main(int argc, char** argv) {
   std::uint32_t k = 15;
   std::uint32_t w = 5;
+  std::uint32_t bandwidth = 500;
+  std::uint32_t chain_length = 4;
+  std::uint32_t matches_length = 100;
+  std::uint32_t gap_length = 10000;
   double frequency = 0.001;
   bool minhash = false;
   std::uint32_t num_threads = 1;
 
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:f:mt:h";
+  const char* optstr = "k:w:b:c:l:g:f:mt:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
       case 'k': k = std::atoi(optarg); break;
       case 'w': w = std::atoi(optarg); break;
+      case 'b': bandwidth = std::atoi(optarg); break;
+      case 'c': chain_length = std::atoi(optarg); break;
+      case 'l': matches_length = std::atoi(optarg); break;
+      case 'g': gap_length = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 'm': minhash = true; break;
       case 't': num_threads = std::atoi(optarg); break;
@@ -151,7 +175,13 @@ int main(int argc, char** argv) {
   }
 
   auto thread_pool = std::make_shared<thread_pool::ThreadPool>(num_threads);
-  ram::MinimizerEngine minimizer_engine{k, w, thread_pool};
+  ram::MinimizerEngine minimizer_engine{
+      k, w,
+      bandwidth,
+      chain_length,
+      matches_length,
+      gap_length,
+      thread_pool};
 
   biosoup::Timer timer{};
 

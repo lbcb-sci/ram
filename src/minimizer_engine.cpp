@@ -28,9 +28,17 @@ const std::vector<std::uint64_t> kCoder = {
 MinimizerEngine::MinimizerEngine(
     std::uint32_t kmer_len,
     std::uint32_t window_len,
+    std::uint32_t bandwidth,
+    std::uint32_t chain_length,
+    std::uint32_t matches_length,
+    std::uint32_t gap_length,
     std::shared_ptr<thread_pool::ThreadPool> thread_pool)
     : k_(std::min(std::max(kmer_len, 1U), 31U)),
       w_(window_len),
+      bandwidth_(bandwidth),
+      chain_(chain_length),
+      matches_(matches_length),
+      gap_(gap_length),
       occurrence_(-1),
       index_(1U << std::min(14U, 2 * k_)),
       thread_pool_(thread_pool ?
@@ -309,7 +317,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
 
   std::vector<std::pair<std::uint64_t, std::uint64_t>> intervals;
   for (std::uint64_t i = 1, j = 0; i < matches.size(); ++i) {  // NOLINT
-    if (matches[i].group - matches[j].group > 500) {
+    if (matches[i].group - matches[j].group > bandwidth_) {
       if (i - j >= 4) {
         if (!intervals.empty() && intervals.back().second > j) {  // extend
           intervals.back().second = i;
@@ -318,7 +326,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
         }
       }
       ++j;
-      while (j < i && matches[i].group - matches[j].group > 500) {
+      while (j < i && matches[i].group - matches[j].group > bandwidth_) {
         ++j;
       }
     }
@@ -329,7 +337,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
     std::uint64_t j = it.first;
     std::uint64_t i = it.second;
 
-    if (i - j < 4) {
+    if (i - j < chain_) {
       continue;
     }
 
@@ -354,15 +362,15 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
           std::greater<std::uint64_t>());
     }
 
-    if (indices.size() < 4) {
+    if (indices.size() < chain_) {
       continue;
     }
 
     indices.emplace_back(matches.size() - 1 - j);  // stop dummy from above
     for (std::uint64_t k = 1, l = 0; k < indices.size(); ++k) {
       if (matches[j + indices[k]].lhs_position() -
-          matches[j + indices[k - 1]].lhs_position() > 10000ULL) {
-        if (k - l < 4) {
+          matches[j + indices[k - 1]].lhs_position() > gap_) {
+        if (k - l < chain_) {
           l = k;
           continue;
         }
@@ -392,7 +400,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
         }
         lhs_matches += lhs_end - lhs_begin;
         rhs_matches += rhs_end - rhs_begin;
-        if (std::min(lhs_matches, rhs_matches) < 100UL) {
+        if (std::min(lhs_matches, rhs_matches) < matches_) {
           l = k;
           continue;
         }

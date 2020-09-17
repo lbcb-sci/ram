@@ -18,8 +18,12 @@ namespace ram {
 class MinimizerEngine {
  public:
   MinimizerEngine(
-      std::uint32_t kmer_len,  // element of [1, 31]
-      std::uint32_t window_len,
+      std::uint32_t kmer_len = 15,  // element of [1, 31]
+      std::uint32_t window_len = 5,
+      std::uint32_t bandwidth = 500,
+      std::uint32_t chain_length = 4,
+      std::uint32_t matches_length = 100,
+      std::uint32_t gap_length = 10000,
       std::shared_ptr<thread_pool::ThreadPool> thread_pool = nullptr);
 
   MinimizerEngine(const MinimizerEngine&) = delete;
@@ -165,6 +169,10 @@ class MinimizerEngine {
 
   std::uint32_t k_;
   std::uint32_t w_;
+  std::uint32_t bandwidth_;
+  std::uint32_t chain_;
+  std::uint32_t matches_;
+  std::uint64_t gap_;
   std::uint32_t occurrence_;
   std::vector<Index> index_;
   std::shared_ptr<thread_pool::ThreadPool> thread_pool_;

@@ -29,6 +29,18 @@ usage: ram [options ...] <target> [<sequences>]
     -w, --window-length <int>
       default: 5
       length of sliding window from which minimizers are found
+    -b, --bandwidth <int>
+      default: 500
+      size of bandwidth in which minimizer hits can be chained
+    -c, --chain-length <int>
+      default: 4
+      minimal number of chained minimizer hits in overlap
+    -l, --matches-length
+      default: 100
+      minimal number of matching bases in overlap
+    -g, --gap-length
+      default: 10000
+      maximal gap between minimizer hits in a chain
     -f, --frequency-threshold <float>
       default: 0.001
       threshold for ignoring most frequent minimizers
