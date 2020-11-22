@@ -1,7 +1,7 @@
 # Ram
 
 [![Latest GitHub release](https://img.shields.io/github/release/lbcb-sci/ram.svg)](https://github.com/lbcb-sci/ram/releases/latest)
-[![Build status for c++/clang++](https://travis-ci.org/lbcb-sci/ram.svg?branch=master)](https://travis-ci.org/lbcb-sci/ram)
+[![Build status for c++/clang++](https://travis-ci.com/lbcb-sci/ram.svg?branch=master)](https://travis-ci.com/lbcb-sci/ram)
 
 Ram is a c++ implementation of [minimap](https://github.com/lh3/minimap) with few modifications.
 
