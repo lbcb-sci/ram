@@ -41,8 +41,9 @@ std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
         s.compare(s.size() - suff.size(), suff.size(), suff) == 0;
   };
 
-  if (is_suffix(path, ".fasta")    || is_suffix(path, ".fa") ||
-      is_suffix(path, ".fasta.gz") || is_suffix(path, ".fa.gz")) {
+  if (is_suffix(path, ".fasta") || is_suffix(path, ".fasta.gz") ||
+      is_suffix(path, ".fna")   || is_suffix(path, ".fna.gz")   ||
+      is_suffix(path, ".fa")    || is_suffix(path, ".fa.gz")) {
     try {
       return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastaParser>(path);  // NOLINT
     } catch (const std::invalid_argument& exception) {
@@ -50,8 +51,8 @@ std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
       return nullptr;
     }
   }
-  if (is_suffix(path, ".fastq")    || is_suffix(path, ".fq") ||
-      is_suffix(path, ".fastq.gz") || is_suffix(path, ".fq.gz")) {
+  if (is_suffix(path, ".fastq") || is_suffix(path, ".fastq.gz") ||
+      is_suffix(path, ".fq")    || is_suffix(path, ".fq.gz")) {
     try {
       return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastqParser>(path);  // NOLINT
     } catch (const std::invalid_argument& exception) {
@@ -62,7 +63,8 @@ std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
 
   std::cerr << "[ram::CreateParser] error: file " << path
             << " has unsupported format extension (valid extensions: .fasta, "
-            << ".fasta.gz, .fa, .fa.gz, .fastq, .fastq.gz, .fq, .fq.gz)"
+            << ".fasta.gz, .fna, .fna.gz, .fa, .fa.gz, .fastq, .fastq.gz, "
+            << ".fq, .fq.gz)"
             << std::endl;
   return nullptr;
 }
@@ -176,12 +178,13 @@ int main(int argc, char** argv) {
 
   auto thread_pool = std::make_shared<thread_pool::ThreadPool>(num_threads);
   ram::MinimizerEngine minimizer_engine{
-      k, w,
+      thread_pool,
+      k,
+      w,
       bandwidth,
       chain_length,
       matches_length,
-      gap_length,
-      thread_pool};
+      gap_length};
 
   biosoup::Timer timer{};
 

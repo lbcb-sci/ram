@@ -102,7 +102,7 @@ TEST_F(RamMinimizerEngineTest, Pair) {
 }
 
 TEST_F(RamMinimizerEngineTest, Filter) {
-  MinimizerEngine me{9, 3};
+  MinimizerEngine me{nullptr, 9, 3};
   me.Minimize(s.begin(), s.end());
 
   me.Filter(0.001);

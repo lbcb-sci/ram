@@ -26,13 +26,13 @@ const std::vector<std::uint64_t> kCoder = {
     255,   3, 255, 255, 255, 255, 255, 255};
 
 MinimizerEngine::MinimizerEngine(
+    std::shared_ptr<thread_pool::ThreadPool> thread_pool,
     std::uint32_t kmer_len,
     std::uint32_t window_len,
     std::uint32_t bandwidth,
     std::uint32_t chain_length,
     std::uint32_t matches_length,
-    std::uint32_t gap_length,
-    std::shared_ptr<thread_pool::ThreadPool> thread_pool)
+    std::uint32_t gap_length)
     : k_(std::min(std::max(kmer_len, 1U), 31U)),
       w_(window_len),
       bandwidth_(bandwidth),
