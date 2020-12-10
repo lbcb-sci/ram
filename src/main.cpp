@@ -13,7 +13,7 @@
 
 #include "ram/minimizer_engine.hpp"
 
-std::atomic<std::uint32_t> biosoup::Sequence::num_objects{0};
+std::atomic<std::uint32_t> biosoup::NucleicAcid::num_objects{0};
 
 namespace {
 
@@ -34,7 +34,7 @@ static struct option options[] = {
   {nullptr, 0, nullptr, 0}
 };
 
-std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
+std::unique_ptr<bioparser::Parser<biosoup::NucleicAcid>>
     CreateParser(const std::string& path) {
   auto is_suffix = [] (const std::string& s, const std::string& suff) {
     return s.size() < suff.size() ? false :
@@ -45,7 +45,7 @@ std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
       is_suffix(path, ".fna")   || is_suffix(path, ".fna.gz")   ||
       is_suffix(path, ".fa")    || is_suffix(path, ".fa.gz")) {
     try {
-      return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastaParser>(path);  // NOLINT
+      return bioparser::Parser<biosoup::NucleicAcid>::Create<bioparser::FastaParser>(path);  // NOLINT
     } catch (const std::invalid_argument& exception) {
       std::cerr << exception.what() << std::endl;
       return nullptr;
@@ -54,7 +54,7 @@ std::unique_ptr<bioparser::Parser<biosoup::Sequence>>
   if (is_suffix(path, ".fastq") || is_suffix(path, ".fastq.gz") ||
       is_suffix(path, ".fq")    || is_suffix(path, ".fq.gz")) {
     try {
-      return bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastqParser>(path);  // NOLINT
+      return bioparser::Parser<biosoup::NucleicAcid>::Create<bioparser::FastqParser>(path);  // NOLINT
     } catch (const std::invalid_argument& exception) {
       std::cerr << exception.what() << std::endl;
       return nullptr;
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
   }
 
   bool is_ava = false;
-  std::unique_ptr<bioparser::Parser<biosoup::Sequence>> sparser = nullptr;
+  std::unique_ptr<bioparser::Parser<biosoup::NucleicAcid>> sparser = nullptr;
   if (input_paths.size() > 1) {
     sparser = CreateParser(input_paths[1]);
     if (sparser == nullptr) {
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
   while (true) {
     timer.Start();
 
-    std::vector<std::unique_ptr<biosoup::Sequence>> targets;
+    std::vector<std::unique_ptr<biosoup::NucleicAcid>> targets;
     try {
       targets = tparser->Parse(1ULL << 32);
     } catch (std::invalid_argument& exception) {
@@ -216,13 +216,13 @@ int main(int argc, char** argv) {
               << std::fixed << timer.Stop() << "s"
               << std::endl;
 
-    std::uint64_t num_targets = biosoup::Sequence::num_objects;
-    biosoup::Sequence::num_objects = 0;
+    std::uint64_t num_targets = biosoup::NucleicAcid::num_objects;
+    biosoup::NucleicAcid::num_objects = 0;
 
     while (true) {
       timer.Start();
 
-      std::vector<std::unique_ptr<biosoup::Sequence>> sequences;
+      std::vector<std::unique_ptr<biosoup::NucleicAcid>> sequences;
       try {
         sequences = sparser->Parse(1U << 30);
       } catch (std::invalid_argument& exception) {
@@ -237,7 +237,7 @@ int main(int argc, char** argv) {
       std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
       for (const auto& it : sequences) {
         futures.emplace_back(thread_pool->Submit(
-            [&] (const std::unique_ptr<biosoup::Sequence>& sequence)
+            [&] (const std::unique_ptr<biosoup::NucleicAcid>& sequence)
                 -> std::vector<biosoup::Overlap> {
               return minimizer_engine.Map(sequence, is_ava, is_ava, minhash);
             },
@@ -252,12 +252,12 @@ int main(int argc, char** argv) {
       for (auto& it : futures) {
         for (const auto& jt : it.get()) {
           std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
-                    << sequences[jt.lhs_id - lhs_offset]->data.size() << "\t"
+                    << sequences[jt.lhs_id - lhs_offset]->inflated_len << "\t"
                     << jt.lhs_begin << "\t"
                     << jt.lhs_end << "\t"
                     << (jt.strand ? "+" : "-") << "\t"
                     << targets[jt.rhs_id - rhs_offset]->name << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->data.size() << "\t"
+                    << targets[jt.rhs_id - rhs_offset]->inflated_len << "\t"
                     << jt.rhs_begin << "\t"
                     << jt.rhs_end << "\t"
                     << jt.score << "\t"
@@ -278,13 +278,13 @@ int main(int argc, char** argv) {
       std::cerr << std::endl;
       timer.Stop();
 
-      if (is_ava && biosoup::Sequence::num_objects == num_targets) {
+      if (is_ava && biosoup::NucleicAcid::num_objects == num_targets) {
         break;
       }
     }
 
     sparser->Reset();
-    biosoup::Sequence::num_objects = num_targets;
+    biosoup::NucleicAcid::num_objects = num_targets;
   }
 
   std::cerr << "[ram::] " << timer.elapsed_time() << "s" << std::endl;

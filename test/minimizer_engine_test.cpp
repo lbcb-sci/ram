@@ -5,7 +5,7 @@
 #include "bioparser/fasta_parser.hpp"
 #include "gtest/gtest.h"
 
-std::atomic<std::uint32_t> biosoup::Sequence::num_objects{0};
+std::atomic<std::uint32_t> biosoup::NucleicAcid::num_objects{0};
 
 namespace ram {
 namespace test {
@@ -13,13 +13,13 @@ namespace test {
 class RamMinimizerEngineTest: public ::testing::Test {
  public:
   void SetUp() override {
-    biosoup::Sequence::num_objects = 0;
-    auto p = bioparser::Parser<biosoup::Sequence>::Create<bioparser::FastaParser>(RAM_DATA_PATH);  // NOLINT
+    biosoup::NucleicAcid::num_objects = 0;
+    auto p = bioparser::Parser<biosoup::NucleicAcid>::Create<bioparser::FastaParser>(RAM_DATA_PATH);  // NOLINT
     s = p->Parse(-1);
     EXPECT_EQ(2, s.size());
   }
 
-  std::vector<std::unique_ptr<biosoup::Sequence>> s;
+  std::vector<std::unique_ptr<biosoup::NucleicAcid>> s;
 };
 
 TEST_F(RamMinimizerEngineTest, Map) {
@@ -62,18 +62,6 @@ TEST_F(RamMinimizerEngineTest, Map) {
   EXPECT_EQ(1897, o.front().rhs_end);
   EXPECT_EQ(1895, o.front().score);
   EXPECT_TRUE(o.front().strand);
-
-  s.front()->ReverseAndComplement();
-  o = me.Map(s.front(), true, true);
-  EXPECT_EQ(1, o.size());
-  EXPECT_EQ(0, o.front().lhs_id);
-  EXPECT_EQ(31, o.front().lhs_begin);
-  EXPECT_EQ(1870, o.front().lhs_end);
-  EXPECT_EQ(1, o.front().rhs_id);
-  EXPECT_EQ(0, o.front().rhs_begin);
-  EXPECT_EQ(1893, o.front().rhs_end);
-  EXPECT_EQ(585, o.front().score);
-  EXPECT_FALSE(o.front().strand);
 }
 
 TEST_F(RamMinimizerEngineTest, Pair) {

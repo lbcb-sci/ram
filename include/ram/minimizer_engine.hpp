@@ -9,8 +9,8 @@
 #include <unordered_map>
 #include <utility>
 
+#include "biosoup/nucleic_acid.hpp"
 #include "biosoup/overlap.hpp"
-#include "biosoup/sequence.hpp"
 #include "thread_pool/thread_pool.hpp"
 
 namespace ram {
@@ -37,8 +37,8 @@ class MinimizerEngine {
   // transform set of sequences to minimizer index
   // minhash = pick only the smallest sequence->data.size() / k minimizers
   void Minimize(
-      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator first,
-      std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator last,
+      std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
+      std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
       bool minhash = false);
 
   // set occurrence frequency threshold
@@ -46,15 +46,15 @@ class MinimizerEngine {
 
   // find overlaps in preconstructed minimizer index
   std::vector<biosoup::Overlap> Map(
-      const std::unique_ptr<biosoup::Sequence>& sequence,
+      const std::unique_ptr<biosoup::NucleicAcid>& sequence,
       bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
       bool minhash = false) const;  // only lhs
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
-      const std::unique_ptr<biosoup::Sequence>& lhs,
-      const std::unique_ptr<biosoup::Sequence>& rhs,
+      const std::unique_ptr<biosoup::NucleicAcid>& lhs,
+      const std::unique_ptr<biosoup::NucleicAcid>& rhs,
       bool minhash = false) const;  // only lhs
 
  private:
@@ -147,7 +147,7 @@ class MinimizerEngine {
   };
 
   std::vector<Kmer> Minimize(
-      const std::unique_ptr<biosoup::Sequence>& sequence,
+      const std::unique_ptr<biosoup::NucleicAcid>& sequence,
       bool minhash = false) const;
 
   std::vector<biosoup::Overlap> Chain(

@@ -7,24 +7,6 @@
 
 namespace ram {
 
-const std::vector<std::uint64_t> kCoder = {
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255,   0, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255, 255, 255, 255, 255, 255, 255, 255,
-    255,   0,   1 ,  1,   0, 255, 255,   2,
-      3, 255, 255,   2, 255,   1,   0, 255,
-    255, 255,   0,   1,   3,   3,   2,   0,
-    255,   3, 255, 255, 255, 255, 255, 255,
-    255,   0,   1,   1,   0, 255, 255,   2,
-      3, 255, 255,   2, 255,   1,   0, 255,
-    255, 255,   0,   1,   3,   3,   2,   0,
-    255,   3, 255, 255, 255, 255, 255, 255};
-
 MinimizerEngine::MinimizerEngine(
     std::shared_ptr<thread_pool::ThreadPool> thread_pool,
     std::uint32_t kmer_len,
@@ -61,8 +43,8 @@ std::uint32_t MinimizerEngine::Index::Find(
 }
 
 void MinimizerEngine::Minimize(
-    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator first,
-    std::vector<std::unique_ptr<biosoup::Sequence>>::const_iterator last,
+    std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
+    std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
     bool minhash) {
 
   for (auto& it : index_) {
@@ -82,7 +64,7 @@ void MinimizerEngine::Minimize(
       std::size_t batch_size = 0;
       std::vector<std::future<std::vector<Kmer>>> futures;
       for (; first != last && batch_size < 50000000; ++first) {
-        batch_size += (*first)->data.size();
+        batch_size += (*first)->inflated_len;
         futures.emplace_back(thread_pool_->Submit(
             [&] (decltype(first) it) -> std::vector<Kmer> {
               return Minimize(*it, minhash);
@@ -202,7 +184,7 @@ void MinimizerEngine::Filter(double frequency) {
 }
 
 std::vector<biosoup::Overlap> MinimizerEngine::Map(
-    const std::unique_ptr<biosoup::Sequence>& sequence,
+    const std::unique_ptr<biosoup::NucleicAcid>& sequence,
     bool avoid_equal,
     bool avoid_symmetric,
     bool minhash) const {
@@ -257,8 +239,8 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
 }
 
 std::vector<biosoup::Overlap> MinimizerEngine::Map(
-    const std::unique_ptr<biosoup::Sequence>& lhs,
-    const std::unique_ptr<biosoup::Sequence>& rhs,
+    const std::unique_ptr<biosoup::NucleicAcid>& lhs,
+    const std::unique_ptr<biosoup::NucleicAcid>& rhs,
     bool minhash) const {
 
   auto lhs_sketch = Minimize(lhs, minhash);
@@ -427,9 +409,9 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
 }
 
 std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
-    const std::unique_ptr<biosoup::Sequence>& sequence,
+    const std::unique_ptr<biosoup::NucleicAcid>& sequence,
     bool minhash) const {
-  if (sequence->data.size() < k_) {
+  if (sequence->inflated_len < k_) {
     return std::vector<Kmer>{};
   }
 
@@ -467,11 +449,10 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
   std::vector<Kmer> dst;
 
-  for (std::uint32_t i = 0; i < sequence->data.size(); ++i) {
-    std::uint64_t c = kCoder[sequence->data[i]];
-    if (c == 255ULL) {
-      throw std::invalid_argument(
-          "[ram::MinimizerEngine::Minimize] error: invalid character");
+  for (std::uint32_t i = 0, block = 0; i < sequence->inflated_len; ++i) {
+    std::uint64_t c = (sequence->deflated_data[block] >> (i << 1 & 63)) & 3;
+    if (((i + 1) & 31) == 0) {
+      ++block;
     }
     minimizer = ((minimizer << 2) | c) & mask;
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
@@ -499,7 +480,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
   if (minhash) {
     RadixSort(dst.begin(), dst.end(), k_ * 2, Kmer::SortByValue);
-    dst.resize(sequence->data.size() / k_);
+    dst.resize(sequence->inflated_len / k_);
   }
 
   return dst;
