@@ -449,10 +449,10 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
   std::vector<Kmer> dst;
 
-  for (std::uint32_t i = 0, block = 0; i < sequence->inflated_len; ++i) {
-    std::uint64_t c = (sequence->deflated_data[block] >> (i << 1 & 63)) & 3;
+  for (std::uint32_t i = 0, b = 0; i < sequence->inflated_len; ++i) {
+    std::uint64_t c = (sequence->deflated_data[b] >> (i << 1 & 63)) & 3;
     if (((i + 1) & 31) == 0) {
-      ++block;
+      ++b;
     }
     minimizer = ((minimizer << 2) | c) & mask;
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
