@@ -236,6 +236,9 @@ int main(int argc, char** argv) {
 
       std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
       for (const auto& it : sequences) {
+        if (it->id >= num_targets) {
+          continue;
+        }
         futures.emplace_back(thread_pool->Submit(
             [&] (const std::unique_ptr<biosoup::NucleicAcid>& sequence)
                 -> std::vector<biosoup::Overlap> {
@@ -245,7 +248,7 @@ int main(int argc, char** argv) {
       }
 
       biosoup::ProgressBar bar{
-          static_cast<std::uint32_t>(sequences.size()), 16};
+          static_cast<std::uint32_t>(futures.size()), 16};
 
       std::uint64_t rhs_offset = targets.front()->id;
       std::uint64_t lhs_offset = sequences.front()->id;
@@ -278,7 +281,7 @@ int main(int argc, char** argv) {
       std::cerr << std::endl;
       timer.Stop();
 
-      if (is_ava && biosoup::NucleicAcid::num_objects == num_targets) {
+      if (is_ava && biosoup::NucleicAcid::num_objects >= num_targets) {
         break;
       }
     }
