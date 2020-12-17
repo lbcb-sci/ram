@@ -450,7 +450,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
   std::vector<Kmer> dst;
 
   for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
-    std::uint64_t c = (*sequence)[i];
+    std::uint64_t c = sequence->Code(i);
     minimizer = ((minimizer << 2) | c) & mask;
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
     if (i >= k_ - 1U) {
