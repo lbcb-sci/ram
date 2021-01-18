@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
 
       std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
       for (const auto& it : sequences) {
-        if (it->id >= num_targets) {
+        if (is_ava && it->id >= num_targets) {
           continue;
         }
         futures.emplace_back(thread_pool->Submit(
