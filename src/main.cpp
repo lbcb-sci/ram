@@ -17,17 +17,15 @@ std::atomic<std::uint32_t> biosoup::NucleicAcid::num_objects{0};
 
 namespace {
 
-const char* ram_version = RAM_VERSION;
-
 static struct option options[] = {
   {"kmer-length", required_argument, nullptr, 'k'},
   {"window-length", required_argument, nullptr, 'w'},
-  {"bandwidth", required_argument, nullptr, 'b'},
-  {"chain-length", required_argument, nullptr, 'c'},
-  {"matches-length", required_argument, nullptr, 'l'},
-  {"gap-length", required_argument, nullptr, 'g'},
   {"frequency-threshold", required_argument, nullptr, 'f'},
-  {"minhash", no_argument, nullptr, 'm'},
+  {"bandwidth", required_argument, nullptr, 'b'},
+  {"chain", required_argument, nullptr, 'c'},
+  {"matches", required_argument, nullptr, 'm'},
+  {"gap", required_argument, nullptr, 'g'},
+  {"minhash", no_argument, nullptr, 'M'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -84,22 +82,22 @@ void Help() {
       "    -w, --window-length <int>\n"
       "      default: 5\n"
       "      length of sliding window from which minimizers are sampled\n"
-      "    -b, --bandwidth <int>\n"
-      "      default: 500\n"
-      "      size of bandwidth in which minimizer hits can be chained\n"
-      "    -c, --chain-length <int>\n"
-      "      default: 4\n"
-      "      minimal number of chained minimizer hits in overlap\n"
-      "    -l, --matches-length\n"
-      "      default: 100\n"
-      "      minimal number of matching bases in overlap\n"
-      "    -g, --gap-length\n"
-      "      default: 10000\n"
-      "      maximal gap between minimizer hits in a chain\n"
       "    -f, --frequency-threshold <float>\n"
       "      default: 0.001\n"
       "      threshold for ignoring most frequent minimizers\n"
-      "    -m, --minhash\n"
+      "    --bandwidth <int>\n"
+      "      default: 500\n"
+      "      size of bandwidth in which minimizer hits can be chained\n"
+      "    --chain <int>\n"
+      "      default: 4\n"
+      "      minimal number of chained minimizer hits in overlap\n"
+      "    --matches <int>\n"
+      "      default: 100\n"
+      "      minimal number of matching bases in overlap\n"
+      "    --gap <int>\n"
+      "      default: 10000\n"
+      "      maximal gap between minimizer hits in a chain\n"
+      "    --minhash\n"
       "      use only a portion of all minimizers\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
@@ -116,29 +114,29 @@ int main(int argc, char** argv) {
   std::uint32_t k = 15;
   std::uint32_t w = 5;
   std::uint32_t bandwidth = 500;
-  std::uint32_t chain_length = 4;
-  std::uint32_t matches_length = 100;
-  std::uint32_t gap_length = 10000;
+  std::uint32_t chain = 4;
+  std::uint32_t matches = 100;
+  std::uint32_t gap = 10000;
   double frequency = 0.001;
   bool minhash = false;
   std::uint32_t num_threads = 1;
 
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:b:c:l:g:f:mt:h";
+  const char* optstr = "k:w:f:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
       case 'k': k = std::atoi(optarg); break;
       case 'w': w = std::atoi(optarg); break;
       case 'b': bandwidth = std::atoi(optarg); break;
-      case 'c': chain_length = std::atoi(optarg); break;
-      case 'l': matches_length = std::atoi(optarg); break;
-      case 'g': gap_length = std::atoi(optarg); break;
+      case 'c': chain = std::atoi(optarg); break;
+      case 'm': matches = std::atoi(optarg); break;
+      case 'g': gap = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
-      case 'm': minhash = true; break;
+      case 'M': minhash = true; break;
       case 't': num_threads = std::atoi(optarg); break;
-      case 'v': std::cout << ram_version << std::endl; return 0;
+      case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
       default: return 1;
     }
@@ -182,9 +180,9 @@ int main(int argc, char** argv) {
       k,
       w,
       bandwidth,
-      chain_length,
-      matches_length,
-      gap_length};
+      chain,
+      matches,
+      gap};
 
   biosoup::Timer timer{};
 

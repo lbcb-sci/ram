@@ -9,18 +9,18 @@ namespace ram {
 
 MinimizerEngine::MinimizerEngine(
     std::shared_ptr<thread_pool::ThreadPool> thread_pool,
-    std::uint32_t kmer_len,
-    std::uint32_t window_len,
+    std::uint32_t k,
+    std::uint32_t w,
     std::uint32_t bandwidth,
-    std::uint32_t chain_length,
-    std::uint32_t matches_length,
-    std::uint32_t gap_length)
-    : k_(std::min(std::max(kmer_len, 1U), 31U)),
-      w_(window_len),
+    std::uint32_t chain,
+    std::uint32_t matches,
+    std::uint32_t gap)
+    : k_(std::min(std::max(k, 1U), 31U)),
+      w_(w),
       bandwidth_(bandwidth),
-      chain_(chain_length),
-      matches_(matches_length),
-      gap_(gap_length),
+      chain_(chain),
+      matches_(matches),
+      gap_(gap),
       occurrence_(-1),
       index_(1U << std::min(14U, 2 * k_)),
       thread_pool_(thread_pool ?

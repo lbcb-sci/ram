@@ -14,7 +14,7 @@ class RamMinimizerEngineTest: public ::testing::Test {
  public:
   void SetUp() override {
     biosoup::NucleicAcid::num_objects = 0;
-    auto p = bioparser::Parser<biosoup::NucleicAcid>::Create<bioparser::FastaParser>(RAM_DATA_PATH);  // NOLINT
+    auto p = bioparser::Parser<biosoup::NucleicAcid>::Create<bioparser::FastaParser>(TEST_DATA);  // NOLINT
     s = p->Parse(-1);
     EXPECT_EQ(2, s.size());
   }
