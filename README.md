@@ -69,7 +69,7 @@ On the other hand, you can include ram as a submodule and add it to your project
 if (NOT TARGET ram)
   add_subdirectory(<path_to_submodules>/ram EXCLUDE_FROM_ALL)
 endif ()
-target_link_libraries(<target> ram)
+target_link_libraries(<target> ram::ram)
 ```
 
 #### Build options
