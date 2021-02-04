@@ -75,6 +75,7 @@ target_link_libraries(<target> ram::ram)
 #### Build options
 
 - `ram_install`: generate library install target
+- `ram_build_exe`: build executable
 - `ram_build_tests`: build unit tests
 
 #### Dependencies
