@@ -133,7 +133,8 @@ if (ram_install)
 
   install(
     TARGETS ram
-    EXPORT ${PROJECT_NAME}Targets)
+    EXPORT ${PROJECT_NAME}Targets
+    DESTINATION ${CMAKE_INSTALL_LIBDIR})
   install(
     DIRECTORY include/ram
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
