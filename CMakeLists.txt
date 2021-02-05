@@ -20,6 +20,9 @@ option(ram_install "Generate library install target" OFF)
 option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
 
+include(FetchContent)
+
+
 find_package(biosoup 0.10.0 QUIET)
 find_package(thread_pool 3.0.3 QUIET)
 
@@ -27,7 +30,6 @@ if (NOT biosoup_FOUND)
   if (ram_install)
     message(FATAL_ERROR "Missing package biosoup!")
   endif ()
-  include(FetchContent)
 
   FetchContent_Declare(
     biosoup
@@ -49,8 +51,6 @@ if (NOT thread_pool_FOUND)
     message(FATAL_ERROR "Missing package thread_pool!")
   endif ()
 
-  include(FetchContent)
-
   FetchContent_Declare(
     thread_pool
     GIT_REPOSITORY https://github.com/rvaser/thread_pool
@@ -69,8 +69,6 @@ endif ()
 if (ram_build_exe OR ram_build_tests)
   find_package(bioparser 3.0.13 QUIET)
   if (NOT bioparser_FOUND)
-    include(FetchContent)
-
     FetchContent_Declare(
       bioparser
       GIT_REPOSITORY https://github.com/rvaser/bioparser
@@ -90,8 +88,6 @@ endif ()
 if (ram_build_tests)
   find_package(GTest 1.10.0 QUIET)
   if (NOT GTest_FOUND)
-    include(FetchContent)
-
     FetchContent_Declare(
       googletest
       GIT_REPOSITORY https://github.com/google/googletest
@@ -121,8 +117,9 @@ target_link_libraries(ram
   biosoup::biosoup
   thread_pool::thread_pool)
 
+include(GNUInstallDirs)
+
 if (ram_install)
-  include(GNUInstallDirs)
   include(CMakePackageConfigHelpers)
 
   configure_package_config_file(
