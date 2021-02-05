@@ -13,15 +13,16 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 
+include(FetchContent)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(ram_main_project ON)
 endif ()
 option(ram_install "Generate library install target" OFF)
 option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
-
-include(FetchContent)
-
 
 find_package(biosoup 0.10.0 QUIET)
 find_package(thread_pool 3.0.3 QUIET)
@@ -117,11 +118,7 @@ target_link_libraries(ram
   biosoup::biosoup
   thread_pool::thread_pool)
 
-include(GNUInstallDirs)
-
 if (ram_install)
-  include(CMakePackageConfigHelpers)
-
   configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
