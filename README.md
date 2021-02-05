@@ -83,14 +83,14 @@ target_link_libraries(<target> ram::ram)
 - gcc 4.8+ | clang 3.5+
 - cmake 3.11+
 - pthread
-- (ram_exe) (ram_test) zlib 1.2.8+
+- (ram_exe)(ram_test) zlib 1.2.8+
 
 ###### Hidden
 
-- biosoup 0.10.0
-- thread_pool 3.0.3
-- (ram_exe) (ram_test) bioparser 3.0.13
-- (ram_test) googletest 1.10.0
+- rvaser/biosoup 0.10.0
+- rvaser/thread_pool 3.0.3
+- (ram_exe)(ram_test) rvaser/bioparser 3.0.13
+- (ram_test) google/googletest 1.10.0
 
 ## Acknowledgement
 
