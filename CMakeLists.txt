@@ -20,47 +20,49 @@ option(ram_install "Generate library install target" OFF)
 option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
 
-if (ram_install)
-  find_package(biosoup 0.10.0 REQUIRED)
-  find_package(thread_pool 3.0.3 REQUIRED)
-else ()
-  find_package(biosoup 0.10.0 QUIET)
-  find_package(thread_pool 3.0.3 QUIET)
+find_package(biosoup 0.10.0 QUIET)
+find_package(thread_pool 3.0.3 QUIET)
 
-  if (NOT biosoup_FOUND)
-    include(FetchContent)
+if (NOT biosoup_FOUND)
+  if (ram_install)
+    message(FATAL_ERROR "Missing package biosoup!")
+  endif ()
+  include(FetchContent)
 
-    FetchContent_Declare(
-      biosoup
-      GIT_REPOSITORY https://github.com/rvaser/biosoup
-      GIT_TAG 0.10.0)
+  FetchContent_Declare(
+    biosoup
+    GIT_REPOSITORY https://github.com/rvaser/biosoup
+    GIT_TAG 0.10.0)
 
-    FetchContent_GetProperties(biosoup)
-    if (NOT biosoup_POPULATED)
-      FetchContent_Populate(biosoup)
-      add_subdirectory(
-        ${biosoup_SOURCE_DIR}
-        ${biosoup_BINARY_DIR}
-        EXCLUDE_FROM_ALL)
-    endif ()
+  FetchContent_GetProperties(biosoup)
+  if (NOT biosoup_POPULATED)
+    FetchContent_Populate(biosoup)
+    add_subdirectory(
+      ${biosoup_SOURCE_DIR}
+      ${biosoup_BINARY_DIR}
+      EXCLUDE_FROM_ALL)
+  endif ()
+endif ()
+
+if (NOT thread_pool_FOUND)
+  if (ram_install)
+    message(FATAL_ERROR "Missing package thread_pool!")
   endif ()
 
-  if (NOT thread_pool_FOUND)
-    include(FetchContent)
+  include(FetchContent)
 
-    FetchContent_Declare(
-      thread_pool
-      GIT_REPOSITORY https://github.com/rvaser/thread_pool
-      GIT_TAG 3.0.3)
+  FetchContent_Declare(
+    thread_pool
+    GIT_REPOSITORY https://github.com/rvaser/thread_pool
+    GIT_TAG 3.0.3)
 
-    FetchContent_GetProperties(thread_pool)
-    if (NOT thread_pool_POPULATED)
-      FetchContent_Populate(thread_pool)
-      add_subdirectory(
-        ${thread_pool_SOURCE_DIR}
-        ${thread_pool_BINARY_DIR}
-        EXCLUDE_FROM_ALL)
-    endif ()
+  FetchContent_GetProperties(thread_pool)
+  if (NOT thread_pool_POPULATED)
+    FetchContent_Populate(thread_pool)
+    add_subdirectory(
+      ${thread_pool_SOURCE_DIR}
+      ${thread_pool_BINARY_DIR}
+      EXCLUDE_FROM_ALL)
   endif ()
 endif ()
 
