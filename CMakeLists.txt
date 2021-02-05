@@ -16,7 +16,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 if (CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(ram_main_project ON)
 endif ()
-option(ram_install "Generate install target" OFF)
+option(ram_install "Generate library install target" OFF)
 option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
 
