@@ -228,6 +228,9 @@ int main(int argc, char** argv) {
       }
 
       if(is_rna) {
+        std::cout << "@HD\tVN:1.0\tSO:unknown" << std::endl;
+        std::cout << "@SQ\tSN:chr19\tLN:58617616" << std::endl;
+        std::cout << "@PG\tID:ram'\tPN:ram\tCL:*\tVN:1.0" << std::endl;
         std::vector<std::future<std::string>> futures;
         for (const auto& it : sequences) {
           futures.emplace_back(thread_pool->Submit(
