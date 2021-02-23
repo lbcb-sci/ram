@@ -838,6 +838,24 @@ std::string GenerateSamFromAnchorClusters(int ref_index, int strand, std::vector
     result.append(std::to_string(result_cigar2[k].first));
     result.push_back(result_cigar2[k].second);
   }
+  
+  int length = 0;
+  int counter = 0;
+  for(auto c: result) {
+    if(isalpha(c)) {
+      if (c == 'S' || c == 'M' || c == 'I') {
+        length += counter;
+      }
+      counter = 0;
+    } else {
+      counter = counter * 10;
+      counter += ((int) c) - 48;
+    }
+  }
+
+  if (length != read->data.size()){
+    return "";
+  }
 
   output_result += (result + "\t*\t0\t0\t" + read->data + "\t*\n");
   return output_result;
