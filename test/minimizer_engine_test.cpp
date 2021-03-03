@@ -118,9 +118,9 @@ TEST_F(RamMinimizerEngineTest, Filter) {
   EXPECT_TRUE(o.front().strand);
 }
 
-TEST_F(RamMinimizerEngineTest, Micromize) {
+TEST_F(RamMinimizerEngineTest, MinHash) {
   MinimizerEngine me{};
-  me.Minimize(s.begin(), s.end());
+  me.Minimize(s.begin(), s.end(), true);
   auto o = me.Map(s.front(), true, true, true);
   EXPECT_EQ(1, o.size());
   EXPECT_EQ(0, o.front().lhs_id);
@@ -129,7 +129,7 @@ TEST_F(RamMinimizerEngineTest, Micromize) {
   EXPECT_EQ(1, o.front().rhs_id);
   EXPECT_EQ(55, o.front().rhs_begin);
   EXPECT_EQ(1881, o.front().rhs_end);
-  EXPECT_EQ(242, o.front().score);
+  EXPECT_EQ(226, o.front().score);
   EXPECT_TRUE(o.front().strand);
 
   o = me.Map(s.front(), s.back(), true);
@@ -140,7 +140,7 @@ TEST_F(RamMinimizerEngineTest, Micromize) {
   EXPECT_EQ(1, o.front().rhs_id);
   EXPECT_EQ(55, o.front().rhs_begin);
   EXPECT_EQ(1881, o.front().rhs_end);
-  EXPECT_EQ(242, o.front().score);
+  EXPECT_EQ(226, o.front().score);
   EXPECT_TRUE(o.front().strand);
 }
 

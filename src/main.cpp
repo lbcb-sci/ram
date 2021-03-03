@@ -26,6 +26,7 @@ static struct option options[] = {
   {"matches", required_argument, nullptr, 'm'},
   {"gap", required_argument, nullptr, 'g'},
   {"minhash", no_argument, nullptr, 'M'},
+  {"hpc", no_argument, nullptr, 'H'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -78,7 +79,7 @@ void Help() {
       "  options:\n"
       "    -k, --kmer-length <int>\n"
       "      default: 15\n"
-      "      length of minimizers\n"
+      "      length of minimizers [1, 28]\n"
       "    -w, --window-length <int>\n"
       "      default: 5\n"
       "      length of sliding window from which minimizers are sampled\n"
@@ -99,6 +100,8 @@ void Help() {
       "      maximal gap between minimizer hits in a chain\n"
       "    --minhash\n"
       "      use only a portion of all minimizers\n"
+      "    --hpc\n"
+      "      use homopolymer compression\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -119,11 +122,12 @@ int main(int argc, char** argv) {
   std::uint32_t gap = 10000;
   double frequency = 0.001;
   bool minhash = false;
+  bool hpc = false;
   std::uint32_t num_threads = 1;
 
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:f:h";
+  const char* optstr = "k:w:f:t:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
@@ -135,6 +139,7 @@ int main(int argc, char** argv) {
       case 'g': gap = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 'M': minhash = true; break;
+      case 'H': hpc = true; break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -207,7 +212,7 @@ int main(int argc, char** argv) {
 
     timer.Start();
 
-    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash);
+    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash, hpc);
     minimizer_engine.Filter(frequency);
 
     std::cerr << "[ram::] minimized targets "
@@ -240,7 +245,7 @@ int main(int argc, char** argv) {
         futures.emplace_back(thread_pool->Submit(
             [&] (const std::unique_ptr<biosoup::NucleicAcid>& sequence)
                 -> std::vector<biosoup::Overlap> {
-              return minimizer_engine.Map(sequence, is_ava, is_ava, minhash);
+              return minimizer_engine.Map(sequence, is_ava, is_ava, minhash, hpc);  // NOLINT
             },
             std::ref(it)));
       }

@@ -26,7 +26,7 @@ usage: ram [options ...] <target> [<sequences>]
   options:
     -k, --kmer-length <int>
       default: 15
-      length of minimizers
+      length of minimizers [0, 28]
     -w, --window-length <int>
       default: 5
       length of sliding window from which minimizers are sampled
@@ -47,6 +47,8 @@ usage: ram [options ...] <target> [<sequences>]
       maximal gap between minimizer hits in a chain
     --minhash
       use only a portion of all minimizers
+    --hpc
+      use homopolymer compression
     -t, --threads <int>
       default: 1
       number of threads
