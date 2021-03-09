@@ -49,7 +49,8 @@ class MinimizerEngine {
       const std::unique_ptr<biosoup::NucleicAcid>& sequence,
       bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
-      bool minhash = false) const;  // only lhs
+      bool minhash = false,  // only lhs
+      std::vector<std::uint32_t>* filtered = nullptr) const;
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(

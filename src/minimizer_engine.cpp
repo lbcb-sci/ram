@@ -187,7 +187,8 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     const std::unique_ptr<biosoup::NucleicAcid>& sequence,
     bool avoid_equal,
     bool avoid_symmetric,
-    bool minhash) const {
+    bool minhash,
+    std::vector<std::uint32_t>* filtered) const {
   auto sketch = Minimize(sequence, minhash);
   if (sketch.empty()) {
     return std::vector<biosoup::Overlap>{};
@@ -209,7 +210,13 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     std::uint32_t i = it.value & mask;
     const uint64_t* jt = nullptr;
     auto n = index_[i].Find(it.value, &jt);
-    if (n == 0 || n > occurrence_) {
+    if (n == 0) {
+      continue;
+    }
+    if (n > occurrence_) {
+      if (filtered) {
+        filtered->emplace_back(it.position());
+      }
       continue;
     }
 
