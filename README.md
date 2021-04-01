@@ -47,6 +47,8 @@ usage: ram [options ...] <target> [<sequences>]
       maximal gap between minimizer hits in a chain
     --minhash
       use only a portion of all minimizers
+    --filter <double>
+      length percentage to consider during filtering
     -t, --threads <int>
       default: 1
       number of threads

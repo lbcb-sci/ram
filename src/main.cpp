@@ -26,6 +26,7 @@ static struct option options[] = {
   {"matches", required_argument, nullptr, 'm'},
   {"gap", required_argument, nullptr, 'g'},
   {"minhash", no_argument, nullptr, 'M'},
+  {"filter", required_argument, nullptr, 'F'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -99,6 +100,8 @@ void Help() {
       "      maximal gap between minimizer hits in a chain\n"
       "    --minhash\n"
       "      use only a portion of all minimizers\n"
+      "    --filter <double>\n"
+      "      length percentage to consider during filtering\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -120,6 +123,7 @@ int main(int argc, char** argv) {
   double frequency = 0.001;
   bool minhash = false;
   std::uint32_t num_threads = 1;
+  double filter = 0.9;
 
   std::vector<std::string> input_paths;
 
@@ -135,6 +139,7 @@ int main(int argc, char** argv) {
       case 'g': gap = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 'M': minhash = true; break;
+      case 'F': filter = std::atof(optarg); break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -248,9 +253,26 @@ int main(int argc, char** argv) {
       biosoup::ProgressBar bar{
           static_cast<std::uint32_t>(futures.size()), 16};
 
-      std::uint64_t rhs_offset = targets.front()->id;
+      // std::uint64_t rhs_offset = targets.front()->id;
       std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
+        auto ovl = it.get();
+        if (ovl.empty()) {
+          continue;
+        }
+        std::sort(ovl.begin(), ovl.end(),
+            [] (const biosoup::Overlap& lhs,
+                const biosoup::Overlap& rhs) -> bool {
+              return (lhs.lhs_end - lhs.lhs_begin) >
+                     (rhs.lhs_end - rhs.lhs_begin);
+            });
+        const auto& b = ovl.front();
+        const auto& s = sequences[b.lhs_id - lhs_offset];
+        if (b.lhs_end - b.lhs_begin > filter * s->inflated_len) {
+          std::cout << ">" << s->name << std::endl
+                    << s->InflateData() << std::endl;
+        }
+        /*
         for (const auto& jt : it.get()) {
           std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
                     << sequences[jt.lhs_id - lhs_offset]->inflated_len << "\t"
@@ -268,6 +290,7 @@ int main(int argc, char** argv) {
                     << 255
                     << std::endl;
         }
+        */
 
         if (++bar) {
           std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
