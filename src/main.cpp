@@ -26,6 +26,11 @@ static struct option options[] = {
   {"matches", required_argument, nullptr, 'm'},
   {"gap", required_argument, nullptr, 'g'},
   {"minhash", no_argument, nullptr, 'M'},
+  {"begin", required_argument, nullptr, 'B'},
+  {"end", required_argument, nullptr, 'E'},
+  {"offset", required_argument, nullptr, 'O'},
+  {"ignore", required_argument, nullptr, 'I'},
+  {"dummy", required_argument, nullptr, 'D'},
   {"threads", required_argument, nullptr, 't'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
@@ -99,6 +104,21 @@ void Help() {
       "      maximal gap between minimizer hits in a chain\n"
       "    --minhash\n"
       "      use only a portion of all minimizers\n"
+      "    -B, --begin <int>\n"
+      "      default: 12000\n"
+      "      region of interest begin position\n"
+      "    -E, --end <int>\n"
+      "      default: 35355\n"
+      "      region of interest end position\n"
+      "    -O, --offset <int>\n"
+      "      default: 100\n"
+      "      number of flanking bases left and right of region of interest\n"
+      "    -I, --ignore <int>\n"
+      "      default: 10\n"
+      "      number of bases to skip before offseting\n"
+      "    -D, --dummy <int>\n"
+      "      default: 5000\n"
+      "      size of dummy sequence used for padding\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -121,9 +141,15 @@ int main(int argc, char** argv) {
   bool minhash = false;
   std::uint32_t num_threads = 1;
 
+  std::uint32_t begin = 12000;
+  std::uint32_t end = 35355;
+  std::uint32_t offset = 100;
+  std::uint32_t ignore = 10;
+  std::uint32_t dummy = 5000;
+
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:f:h";
+  const char* optstr = "k:w:f:t:B:E:O:D:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
@@ -135,6 +161,10 @@ int main(int argc, char** argv) {
       case 'g': gap = std::atoi(optarg); break;
       case 'f': frequency = std::atof(optarg); break;
       case 'M': minhash = true; break;
+      case 'B': begin = std::atoi(optarg); break;
+      case 'E': end = std::atoi(optarg); break;
+      case 'O': offset = std::atoi(optarg); break;
+      case 'D': dummy = std::atoi(optarg); break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
@@ -251,23 +281,43 @@ int main(int argc, char** argv) {
       std::uint64_t rhs_offset = targets.front()->id;
       std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
-        for (const auto& jt : it.get()) {
-          std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
-                    << sequences[jt.lhs_id - lhs_offset]->inflated_len << "\t"
-                    << jt.lhs_begin << "\t"
-                    << jt.lhs_end << "\t"
-                    << (jt.strand ? "+" : "-") << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->name << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->inflated_len << "\t"
-                    << jt.rhs_begin << "\t"
-                    << jt.rhs_end << "\t"
-                    << jt.score << "\t"
-                    << std::max(
-                          jt.lhs_end - jt.lhs_begin,
-                          jt.rhs_end - jt.rhs_begin) << "\t"
-                    << 255
-                    << std::endl;
+        bool c = false, l = false, r = false;
+        auto overlaps = it.get();
+        for (const auto& jt : overlaps) {
+          // 11900 - 12000 and 35355 - 35455
+          if (!(jt.rhs_end < begin || jt.rhs_begin > end)) {
+            c = true;
+          }
+          if (!(jt.rhs_end < (begin - ignore - offset) || jt.rhs_begin > (begin - ignore))) {  // NOLINT
+            l = true;
+          }
+          if (!(jt.rhs_end < (end + ignore) || jt.rhs_begin > (end + ignore + offset))) {  // NOLINT
+            r = true;
+          }
         }
+        if (c && l && r) {
+          const auto& s = sequences[overlaps.front().lhs_id - lhs_offset];
+          std::cout << ">" << s->name << std::endl
+                    << s->InflateData() << std::endl
+                    << ">dummy" << std::endl
+                    << targets.front()->InflateData(108000, dummy) << std::endl;
+        }
+        //   std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
+        //             << sequences[jt.lhs_id - lhs_offset]->inflated_len << "\t"
+        //             << jt.lhs_begin << "\t"
+        //             << jt.lhs_end << "\t"
+        //             << (jt.strand ? "+" : "-") << "\t"
+        //             << targets[jt.rhs_id - rhs_offset]->name << "\t"
+        //             << targets[jt.rhs_id - rhs_offset]->inflated_len << "\t"
+        //             << jt.rhs_begin << "\t"
+        //             << jt.rhs_end << "\t"
+        //             << jt.score << "\t"
+        //             << std::max(
+        //                   jt.lhs_end - jt.lhs_begin,
+        //                   jt.rhs_end - jt.rhs_begin) << "\t"
+        //             << 255
+        //             << std::endl;
+        // }
 
         if (++bar) {
           std::cerr << "[ram::] mapped " << bar.event_counter() << " sequences "
