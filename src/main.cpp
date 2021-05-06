@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
 
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:f:t:B:E:O:D:h";
+  const char* optstr = "k:w:f:t:B:E:O:I:D:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
@@ -164,6 +164,7 @@ int main(int argc, char** argv) {
       case 'B': begin = std::atoi(optarg); break;
       case 'E': end = std::atoi(optarg); break;
       case 'O': offset = std::atoi(optarg); break;
+      case 'I': ignore = std::atoi(optarg); break;
       case 'D': dummy = std::atoi(optarg); break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
@@ -278,7 +279,7 @@ int main(int argc, char** argv) {
       biosoup::ProgressBar bar{
           static_cast<std::uint32_t>(futures.size()), 16};
 
-      std::uint64_t rhs_offset = targets.front()->id;
+      // std::uint64_t rhs_offset = targets.front()->id;
       std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
         bool c = false, l = false, r = false;
