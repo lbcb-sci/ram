@@ -4,12 +4,14 @@
 
 #include <bitset>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 
 #include "bioparser/fasta_parser.hpp"
 #include "bioparser/fastq_parser.hpp"
 #include "biosoup/progress_bar.hpp"
 #include "biosoup/timer.hpp"
+#include "edlib.h"  // NOLINT
 
 #include "ram/minimizer_engine.hpp"
 
@@ -217,6 +219,8 @@ int main(int argc, char** argv) {
 
   biosoup::Timer timer{};
 
+  std::ofstream os("trimmed.fa");
+
   while (true) {
     timer.Start();
 
@@ -298,6 +302,60 @@ int main(int argc, char** argv) {
         }
         if (c && l && r) {
           const auto& s = sequences[overlaps.front().lhs_id - lhs_offset];
+          // find bounds
+          std::uint32_t b = s->inflated_len, e = 0;
+          for (const auto& jt : overlaps) {
+            auto q = s->InflateData(jt.lhs_begin, jt.lhs_end - jt.lhs_begin);
+            if (!jt.strand) {
+              biosoup::NucleicAcid q_{"", q};
+              q_.ReverseAndComplement();
+              q = q_.InflateData();
+            }
+            auto r = targets[jt.rhs_id]->InflateData(jt.rhs_begin, jt.rhs_end - jt.rhs_begin);  // NOLINT
+
+            EdlibAlignResult result = edlibAlign(
+                q.c_str(), q.size(),
+                r.c_str(), r.size(),
+                edlibNewAlignConfig(-1, EDLIB_MODE_NW, EDLIB_TASK_PATH, nullptr, 0));  // NOLINT
+            if (result.status == EDLIB_STATUS_OK) {
+              std::uint32_t q_pos = jt.strand ? jt.lhs_begin : s->inflated_len - jt.lhs_end;  // NOLINT
+              std::uint32_t r_pos = jt.rhs_begin;
+
+              for (int a = 0; a <= result.alignmentLength; ++a) {
+                if (r_pos == begin || r_pos == end) {
+                  b = std::min(b, jt.strand ? q_pos : s->inflated_len - q_pos - 1);  // NOLINT
+                  e = std::max(e, jt.strand ? q_pos : s->inflated_len - q_pos - 1);  // NOLINT
+                }
+                if (a == result.alignmentLength) {
+                  break;
+                }
+                switch (result.alignment[a]) {
+                  case 0:
+                  case 3: {
+                    ++q_pos;
+                    ++r_pos;
+                    break;
+                  }
+                  case 1: {
+                    ++q_pos;
+                    break;
+                  }
+                  case 2: {
+                    ++r_pos;
+                    break;
+                  }
+                  default: break;
+                }
+              }
+            }
+            edlibFreeAlignResult(result);
+          }
+
+          // print trimmed sequence
+          os << ">" << s->name << "_trimmed" << std::endl
+             << s->InflateData(b, e - b) << std::endl;
+
+          // print whole sequence
           std::cout << ">" << s->name << std::endl
                     << s->InflateData() << std::endl
                     << ">dummy" << std::endl
@@ -338,6 +396,8 @@ int main(int argc, char** argv) {
     sparser->Reset();
     biosoup::NucleicAcid::num_objects = num_targets;
   }
+
+  os.close();
 
   std::cerr << "[ram::] " << timer.elapsed_time() << "s" << std::endl;
 

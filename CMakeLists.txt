@@ -67,6 +67,25 @@ if (NOT thread_pool_FOUND)
   endif ()
 endif ()
 
+if (ram_build_exe)
+  find_package(edlib 1.2.6 QUIET)
+  if (NOT edlib_FOUND)
+    FetchContent_Declare(
+      edlib
+      GIT_REPOSITORY https://github.com/martinsos/edlib
+      GIT_TAG d5774b4)
+
+    FetchContent_GetProperties(edlib)
+    if (NOT edlib_POPULATED)
+      FetchContent_Populate(edlib)
+      add_subdirectory(
+        ${edlib_SOURCE_DIR}
+        ${edlib_BINARY_DIR}
+        EXCLUDE_FROM_ALL)
+    endif ()
+  endif ()
+endif ()
+
 if (ram_build_exe OR ram_build_tests)
   find_package(bioparser 3.0.13 QUIET)
   if (NOT bioparser_FOUND)
@@ -150,7 +169,8 @@ if (ram_build_exe)
 
   target_link_libraries(ram_exe
     ram
-    bioparser::bioparser)
+    bioparser::bioparser
+    edlib::edlib)
 
   target_compile_definitions(ram_exe PRIVATE VERSION="${PROJECT_VERSION}")
   set_property(TARGET ram_exe PROPERTY OUTPUT_NAME ram)
