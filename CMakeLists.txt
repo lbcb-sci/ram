@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(ram VERSION 2.1.0
+project(ram VERSION 2.1.1
             LANGUAGES CXX
             DESCRIPTION "Ram is a c++ implementation of [minimap](https://github.com/lh3/minimap) with few modifications.")
 
@@ -25,7 +25,7 @@ option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
 
 find_package(biosoup 0.10.0 QUIET)
-find_package(thread_pool 3.0.3 QUIET)
+find_package(thread_pool 4.0.0 QUIET)
 
 if (NOT biosoup_FOUND)
   if (ram_install)
@@ -55,7 +55,7 @@ if (NOT thread_pool_FOUND)
   FetchContent_Declare(
     thread_pool
     GIT_REPOSITORY https://github.com/rvaser/thread_pool
-    GIT_TAG 3.0.3)
+    GIT_TAG 4.0.0)
 
   FetchContent_GetProperties(thread_pool)
   if (NOT thread_pool_POPULATED)

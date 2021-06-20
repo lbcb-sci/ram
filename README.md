@@ -88,7 +88,7 @@ target_link_libraries(<target> ram::ram)
 ###### Hidden
 
 - rvaser/biosoup 0.10.0
-- rvaser/thread_pool 3.0.3
+- rvaser/thread_pool 4.0.0
 - (ram_exe)(ram_test) rvaser/bioparser 3.0.13
 - (ram_test) google/googletest 1.10.0
 
