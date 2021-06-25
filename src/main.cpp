@@ -359,7 +359,7 @@ int main(int argc, char** argv) {
           std::cout << ">" << s->name << std::endl
                     << s->InflateData() << std::endl
                     << ">dummy" << std::endl
-                    << targets.front()->InflateData(108000, dummy) << std::endl;
+                    << std::string(dummy, 'N') << std::endl;
         }
         //   std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
         //             << sequences[jt.lhs_id - lhs_offset]->inflated_len << "\t"
