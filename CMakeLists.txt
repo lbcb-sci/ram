@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(ram VERSION 2.1.1
+project(ram VERSION 2.1.2
             LANGUAGES CXX
             DESCRIPTION "Ram is a c++ implementation of [minimap](https://github.com/lh3/minimap) with few modifications.")
 
