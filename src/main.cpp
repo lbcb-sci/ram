@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
 
   std::vector<std::string> input_paths;
 
-  const char* optstr = "k:w:f:h";
+  const char* optstr = "k:w:f:t:h";
   char arg;
   while ((arg = getopt_long(argc, argv, optstr, options, nullptr)) != -1) {
     switch (arg) {
