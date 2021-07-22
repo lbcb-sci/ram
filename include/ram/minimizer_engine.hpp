@@ -5,12 +5,18 @@
 
 #include <cstdint>
 #include <memory>
-#include <vector>
+#include <string>
 #include <unordered_map>
+#include <vector>
 #include <utility>
 
 #include "biosoup/nucleic_acid.hpp"
 #include "biosoup/overlap.hpp"
+#include "cereal/access.hpp"
+#include "cereal/types/string.hpp"
+#include "cereal/types/unordered_map.hpp"
+#include "cereal/types/utility.hpp"
+#include "cereal/types/vector.hpp"
 #include "thread_pool/thread_pool.hpp"
 
 namespace ram {
@@ -58,7 +64,37 @@ class MinimizerEngine {
       const std::unique_ptr<biosoup::NucleicAcid>& rhs,
       bool minhash = false) const;  // only lhs
 
+  // cereal wrapper
+  void Load();
+
+  // cereal wrapper
+  void Store();
+
+  std::pair<std::string, std::uint32_t> target(std::size_t i) const {
+    return targets_[i];
+  }
+
+  std::size_t num_targets() const {
+    return targets_.size();
+  }
+
  private:
+  friend cereal::access;
+
+  template<class Archive>
+  void serialize(Archive& archive) {  // NOLINT
+    archive(
+        k_,
+        w_,
+        bandwidth_,
+        chain_,
+        matches_,
+        gap_,
+        occurrence_,
+        index_,
+        targets_);
+  }
+
   struct Kmer {
    public:
     Kmer() = default;
@@ -143,6 +179,11 @@ class MinimizerEngine {
       }
     };
 
+    template<class Archive>
+    void serialize(Archive& archive) {  // NOLINT
+      archive(origins, locator);
+    }
+
     std::vector<std::uint64_t> origins;
     std::unordered_map<std::uint64_t, std::uint64_t, Hash, KeyEqual> locator;
   };
@@ -176,6 +217,8 @@ class MinimizerEngine {
   std::uint64_t gap_;
   std::uint32_t occurrence_;
   std::vector<Index> index_;
+  std::uint32_t chunk_ = 0;
+  std::vector<std::pair<std::string, std::uint32_t>> targets_;
   std::shared_ptr<thread_pool::ThreadPool> thread_pool_;
 };
 

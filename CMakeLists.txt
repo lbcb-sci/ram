@@ -67,6 +67,24 @@ if (NOT thread_pool_FOUND)
   endif ()
 endif ()
 
+find_package(cereal 1.3.0 QUIET)
+if (NOT cereal_FOUND)
+  FetchContent_Declare(
+    cereal
+    GIT_REPOSITORY https://github.com/USCiLab/cereal
+    GIT_TAG v1.3.0)
+
+  FetchContent_GetProperties(cereal)
+  if (NOT cereal_POPULATED)
+    FetchContent_Populate(cereal)
+    add_subdirectory(
+      ${cereal_SOURCE_DIR}
+      ${cereal_BINARY_DIR}
+      EXCLUDE_FROM_ALL)
+    add_library(cereal::cereal ALIAS cereal)
+  endif ()
+endif ()
+
 if (ram_build_exe OR ram_build_tests)
   find_package(bioparser 3.0.13 QUIET)
   if (NOT bioparser_FOUND)
@@ -116,6 +134,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_link_libraries(ram
   biosoup::biosoup
+  cereal::cereal
   thread_pool::thread_pool)
 
 if (ram_install)

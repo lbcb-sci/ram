@@ -186,35 +186,57 @@ int main(int argc, char** argv) {
 
   biosoup::Timer timer{};
 
+  std::size_t num_targets = 0;
+  bool use_disk = false;
   while (true) {
     timer.Start();
 
-    std::vector<std::unique_ptr<biosoup::NucleicAcid>> targets;
     try {
-      targets = tparser->Parse(1ULL << 32);
-    } catch (std::invalid_argument& exception) {
-      std::cerr << exception.what() << std::endl;
-      return 1;
+      minimizer_engine.Load();
+      std::cerr << "[ram::] loaded index chunk "
+                << std::fixed << timer.Stop() << "s"
+                << std::endl;
+      use_disk = true;
+    } catch (std::exception& exception) {
+      if (use_disk) {
+        break;
+      }
+      std::vector<std::unique_ptr<biosoup::NucleicAcid>> targets;
+      try {
+        targets = tparser->Parse(1ULL << 32);
+      } catch (std::invalid_argument& exception) {
+        std::cerr << exception.what() << std::endl;
+        return 1;
+      }
+
+      if (targets.empty()) {
+        break;
+      }
+
+      std::cerr << "[ram::] parsed " << targets.size() << " targets "
+                << std::fixed << timer.Stop() << "s"
+                << std::endl;
+
+      timer.Start();
+
+      minimizer_engine.Minimize(targets.begin(), targets.end(), minhash);
+      minimizer_engine.Filter(frequency);
+
+      std::cerr << "[ram::] minimized targets "
+                << std::fixed << timer.Stop() << "s"
+                << std::endl;
+
+      timer.Start();
+
+      minimizer_engine.Store();
+
+      std::cerr << "[ram::] stored index chunk "
+                << std::fixed << timer.Stop() << "s"
+                << std::endl;
     }
+    std::uint64_t rhs_offset = num_targets;
+    num_targets += minimizer_engine.num_targets();
 
-    if (targets.empty()) {
-      break;
-    }
-
-    std::cerr << "[ram::] parsed " << targets.size() << " targets "
-              << std::fixed << timer.Stop() << "s"
-              << std::endl;
-
-    timer.Start();
-
-    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash);
-    minimizer_engine.Filter(frequency);
-
-    std::cerr << "[ram::] minimized targets "
-              << std::fixed << timer.Stop() << "s"
-              << std::endl;
-
-    std::uint64_t num_targets = biosoup::NucleicAcid::num_objects;
     biosoup::NucleicAcid::num_objects = 0;
 
     while (true) {
@@ -248,7 +270,6 @@ int main(int argc, char** argv) {
       biosoup::ProgressBar bar{
           static_cast<std::uint32_t>(futures.size()), 16};
 
-      std::uint64_t rhs_offset = targets.front()->id;
       std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
         for (const auto& jt : it.get()) {
@@ -257,8 +278,10 @@ int main(int argc, char** argv) {
                     << jt.lhs_begin << "\t"
                     << jt.lhs_end << "\t"
                     << (jt.strand ? "+" : "-") << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->name << "\t"
-                    << targets[jt.rhs_id - rhs_offset]->inflated_len << "\t"
+                    << minimizer_engine.target(jt.rhs_id - rhs_offset).first << "\t"  // NOLINT
+                    << minimizer_engine.target(jt.rhs_id - rhs_offset).second << "\t"  // NOLINT
+                    // << targets[jt.rhs_id - rhs_offset]->name << "\t"
+                    // << targets[jt.rhs_id - rhs_offset]->inflated_len << "\t"
                     << jt.rhs_begin << "\t"
                     << jt.rhs_end << "\t"
                     << jt.score << "\t"

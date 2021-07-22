@@ -3,7 +3,11 @@
 #include "ram/minimizer_engine.hpp"
 
 #include <deque>
+#include <fstream>
 #include <stdexcept>
+
+#include "cereal/archives/binary.hpp"
+#include "cereal/archives/json.hpp"
 
 namespace ram {
 
@@ -51,10 +55,13 @@ void MinimizerEngine::Minimize(
     it.origins.clear();
     it.locator.clear();
   }
+  targets_.clear();
 
   if (first >= last) {
     return;
   }
+
+  targets_.reserve(last - first);
 
   std::vector<std::vector<Kmer>> minimizers(index_.size());
   {
@@ -64,6 +71,7 @@ void MinimizerEngine::Minimize(
       std::size_t batch_size = 0;
       std::vector<std::future<std::vector<Kmer>>> futures;
       for (; first != last && batch_size < 50000000; ++first) {
+        targets_.emplace_back((*first)->name, (*first)->inflated_len);
         batch_size += (*first)->inflated_len;
         futures.emplace_back(thread_pool_->Submit(
             [&] (decltype(first) it) -> std::vector<Kmer> {
@@ -566,6 +574,30 @@ std::vector<std::uint64_t> MinimizerEngine::LongestSubsequence(
   std::reverse(dst.begin(), dst.end());
 
   return dst;
+}
+
+void MinimizerEngine::Store() {
+  std::ofstream os("ram." + std::to_string(chunk_) + ".cereal");
+  try {
+    cereal::BinaryOutputArchive archive(os);
+    archive(*this);
+  } catch (std::exception&) {
+    throw std::logic_error(
+        "[ram::MinimizerEngine::Store] error: unable to store archive");
+  }
+  ++chunk_;
+}
+
+void MinimizerEngine::Load() {
+  std::ifstream is("ram." + std::to_string(chunk_) + ".cereal");
+  try {
+    cereal::BinaryInputArchive archive(is);
+    archive(*this);
+  } catch (std::exception&) {
+    throw std::logic_error(
+        "[ram::MinimizerEngine::Load] error: unable to load archive");
+  }
+  ++chunk_;
 }
 
 }  // namespace ram
