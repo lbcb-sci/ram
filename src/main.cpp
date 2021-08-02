@@ -10,6 +10,7 @@
 #include "bioparser/fastq_parser.hpp"
 #include "biosoup/progress_bar.hpp"
 #include "biosoup/timer.hpp"
+#include "edlib.h"  // NOLINT
 
 #include "ram/minimizer_engine.hpp"
 
@@ -232,6 +233,9 @@ int main(int argc, char** argv) {
         break;
       }
 
+      std::uint64_t rhs_offset = targets.front()->id;
+      std::uint64_t lhs_offset = sequences.front()->id;
+
       std::vector<std::future<std::vector<biosoup::Overlap>>> futures;
       for (const auto& it : sequences) {
         if (is_ava && it->id >= num_targets) {
@@ -240,7 +244,34 @@ int main(int argc, char** argv) {
         futures.emplace_back(thread_pool->Submit(
             [&] (const std::unique_ptr<biosoup::NucleicAcid>& sequence)
                 -> std::vector<biosoup::Overlap> {
-              return minimizer_engine.Map(sequence, is_ava, is_ava, minhash);
+              auto dst = minimizer_engine.Map(sequence, is_ava, is_ava, minhash);  // NOLINT
+
+              for (auto& it : dst) {
+                auto lhs = sequences[it.lhs_id - lhs_offset]->InflateData(
+                    it.lhs_begin,
+                    it.lhs_end - it.lhs_begin);
+
+                auto rhs = targets[it.rhs_id - rhs_offset]->InflateData(
+                    it.rhs_begin,
+                    it.rhs_end - it.rhs_begin);
+                if (!it.strand) {
+                  biosoup::NucleicAcid rhs_{"", rhs};
+                  rhs_.ReverseAndComplement();
+                  rhs = rhs_.InflateData();
+                }
+
+                auto result = edlibAlign(
+                    lhs.c_str(), lhs.size(),
+                    rhs.c_str(), rhs.size(),
+                    edlibDefaultAlignConfig());
+
+                it.score = result.status == EDLIB_STATUS_OK ?
+                    std::min(lhs.size(), rhs.size()) - result.editDistance : 0;
+
+                edlibFreeAlignResult(result);
+              }
+
+              return dst;
             },
             std::ref(it)));
       }
@@ -248,8 +279,6 @@ int main(int argc, char** argv) {
       biosoup::ProgressBar bar{
           static_cast<std::uint32_t>(futures.size()), 16};
 
-      std::uint64_t rhs_offset = targets.front()->id;
-      std::uint64_t lhs_offset = sequences.front()->id;
       for (auto& it : futures) {
         for (const auto& jt : it.get()) {
           std::cout << sequences[jt.lhs_id - lhs_offset]->name << "\t"
