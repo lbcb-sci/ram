@@ -10,7 +10,7 @@
 #include "bioparser/fastq_parser.hpp"
 #include "biosoup/progress_bar.hpp"
 #include "biosoup/timer.hpp"
-#include "edlib.h"  // NOLINT
+#include "spoa/spoa.hpp"
 
 #include "ram/minimizer_engine.hpp"
 
@@ -187,6 +187,21 @@ int main(int argc, char** argv) {
 
   biosoup::Timer timer{};
 
+  auto thread_map = thread_pool->thread_map();
+
+  std::uint8_t m = 2;
+  std::uint8_t n = -5;
+  std::uint8_t g = -2;
+  std::uint8_t e = -2;
+  std::uint8_t q = -2;
+  std::uint8_t c = -2;
+  std::vector<std::unique_ptr<spoa::AlignmentEngine>> alignment_engines;
+  for (const auto& it : thread_map) {
+    (void) it;
+    alignment_engines.emplace_back(spoa::AlignmentEngine::Create(
+        spoa::AlignmentType::kNW, m, n, g, e, q, c));
+  }
+
   while (true) {
     timer.Start();
 
@@ -245,6 +260,7 @@ int main(int argc, char** argv) {
             [&] (const std::unique_ptr<biosoup::NucleicAcid>& sequence)
                 -> std::vector<biosoup::Overlap> {
               auto dst = minimizer_engine.Map(sequence, is_ava, is_ava, minhash);  // NOLINT
+              const auto& ae = alignment_engines[thread_map[std::this_thread::get_id()]];  // NOLINT
 
               for (auto& it : dst) {
                 auto lhs = sequences[it.lhs_id - lhs_offset]->InflateData(
@@ -260,15 +276,12 @@ int main(int argc, char** argv) {
                   rhs = rhs_.InflateData();
                 }
 
-                auto result = edlibAlign(
-                    lhs.c_str(), lhs.size(),
-                    rhs.c_str(), rhs.size(),
-                    edlibDefaultAlignConfig());
+                auto graph = spoa::Graph{};
+                graph.AddAlignment(spoa::Alignment{}, rhs, 1);
+                std::int32_t score = 0;
+                ae->Align(lhs, graph, &score);
 
-                it.score = result.status == EDLIB_STATUS_OK ?
-                    std::min(lhs.size(), rhs.size()) - result.editDistance : 0;
-
-                edlibFreeAlignResult(result);
+                it.score = score < 0 ? 0 : score;
               }
 
               return dst;

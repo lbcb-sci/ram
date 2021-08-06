@@ -68,23 +68,23 @@ if (NOT thread_pool_FOUND)
 endif ()
 
 if (ram_build_exe)
-  find_package(edlib 1.2.6 QUIET)
-  if (NOT edlib_FOUND)
+  find_package(spoa 4.0.8 QUIET)
+  if (NOT spoa_FOUND)
     if (racon_install)
-      message(FATAL_ERROR "Missing package edlib!")
+      message(FATAL_ERROR "Missing package spoa!")
     endif ()
 
     FetchContent_Declare(
-      edlib
-      GIT_REPOSITORY https://github.com/martinsos/edlib
-      GIT_TAG d5774b4)
+      spoa
+      GIT_REPOSITORY https://github.com/rvaser/spoa
+      GIT_TAG 981ad59)
 
-    FetchContent_GetProperties(edlib)
-    if (NOT edlib_POPULATED)
-      FetchContent_Populate(edlib)
+    FetchContent_GetProperties(spoa)
+    if (NOT spoa_POPULATED)
+      FetchContent_Populate(spoa)
       add_subdirectory(
-        ${edlib_SOURCE_DIR}
-        ${edlib_BINARY_DIR}
+        ${spoa_SOURCE_DIR}
+        ${spoa_BINARY_DIR}
         EXCLUDE_FROM_ALL)
     endif ()
   endif ()
@@ -173,7 +173,7 @@ if (ram_build_exe)
 
   target_link_libraries(ram_exe
     ram
-    edlib::edlib
+    spoa::spoa
     bioparser::bioparser)
 
   target_compile_definitions(ram_exe PRIVATE VERSION="${PROJECT_VERSION}")
