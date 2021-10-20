@@ -83,6 +83,10 @@ class MinimizerEngine {
       return kmer.value;
     }
 
+    static std::uint64_t SortByOrigin(const Kmer& kmer) {
+      return kmer.origin;
+    }
+
     std::uint64_t value;
     std::uint64_t origin;
   };

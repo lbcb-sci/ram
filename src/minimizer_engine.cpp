@@ -194,51 +194,90 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     return std::vector<biosoup::Overlap>{};
   }
 
-  auto id = [] (std::uint64_t origin) -> std::uint32_t {
-    return static_cast<std::uint32_t>(origin >> 32);
+  std::vector<Match> matches;
+  auto add_match = [&] (const Kmer& kmer, uint64_t origin) -> void {
+    auto id = [] (std::uint64_t origin) -> std::uint32_t {
+      return static_cast<std::uint32_t>(origin >> 32);
+    };
+    auto position = [] (std::uint64_t origin) -> std::uint32_t {
+      return static_cast<std::uint32_t>(origin) >> 1;
+    };
+    auto strand = [] (std::uint64_t origin) -> bool {
+      return origin & 1;
+    };
+
+    if (avoid_equal && sequence->id == id(origin)) {
+      return;
+    }
+    if (avoid_symmetric && sequence->id > id(origin)) {
+      return;
+    }
+
+    std::uint64_t rhs_id = id(origin);
+    std::uint64_t strand_ = kmer.strand() == strand(origin);
+    std::uint64_t lhs_pos = kmer.position();
+    std::uint64_t rhs_pos = position(origin);
+    std::uint64_t diagonal = !strand_ ?
+        rhs_pos + lhs_pos :
+        rhs_pos - lhs_pos + (3ULL << 30);
+
+    matches.emplace_back(
+        (((rhs_id << 1) | strand_) << 32) | diagonal,
+        (lhs_pos << 32) | rhs_pos);
   };
-  auto position = [] (std::uint64_t origin) -> std::uint32_t {
-    return static_cast<std::uint32_t>(origin) >> 1;
+
+  struct Hit {
+    const Kmer* kmer;
+    std::uint32_t n;
+    const uint64_t* origins;
+
+    Hit(const Kmer* kmer, std::uint32_t n, const uint64_t* origins)
+        : kmer(kmer),
+          n(n),
+          origins(origins) {}
+
+    bool operator<(const Hit& other) const {
+      return kmer->value < other.kmer->value;
+    }
   };
-  auto strand = [] (std::uint64_t origin) -> bool {
-    return origin & 1;
-  };
+  std::vector<Hit> filtered_hits;
 
   std::uint64_t mask = index_.size() - 1;
-  std::vector<Match> matches;
-  for (const auto& it : sketch) {
-    std::uint32_t i = it.value & mask;
-    const uint64_t* jt = nullptr;
-    auto n = index_[i].Find(it.value, &jt);
-    if (n == 0) {
-      continue;
-    }
+  std::uint32_t prev = 0;
+
+  sketch.emplace_back(-1, sequence->inflated_len << 1);  // stop dummy
+
+  for (const auto& kmer : sketch) {
+    std::uint32_t i = kmer.value & mask;
+    const uint64_t* origins = nullptr;
+    auto n = index_[i].Find(kmer.value, &origins);
     if (n > occurrence_) {
+      filtered_hits.emplace_back(&kmer, n, origins);
       if (filtered) {
-        filtered->emplace_back(it.position());
+        filtered->emplace_back(kmer.position());
       }
       continue;
     }
 
-    for (std::uint32_t j = 0; j < n; ++j, ++jt) {
-      if (avoid_equal && sequence->id == id(*jt)) {
-        continue;
+    std::size_t rescuees = std::min(
+        static_cast<std::size_t>(kmer.position() - prev) / bandwidth_,
+        filtered_hits.size());
+    if (rescuees) {
+      std::partial_sort(
+          filtered_hits.begin(),
+          filtered_hits.begin() + rescuees,
+          filtered_hits.end());
+      for (auto it = filtered_hits.begin(); rescuees; rescuees--, ++it) {
+        for (; it->n; it->n--, ++it->origins) {
+          add_match(*it->kmer, *it->origins);
+        }
       }
-      if (avoid_symmetric && sequence->id > id(*jt)) {
-        continue;
-      }
+    }
+    filtered_hits.clear();
+    prev = kmer.position();
 
-      std::uint64_t rhs_id = id(*jt);
-      std::uint64_t strand_ = it.strand() == strand(*jt);
-      std::uint64_t lhs_pos = it.position();
-      std::uint64_t rhs_pos = position(*jt);
-      std::uint64_t diagonal = !strand_ ?
-          rhs_pos + lhs_pos :
-          rhs_pos - lhs_pos + (3ULL << 30);
-
-      matches.emplace_back(
-          (((rhs_id << 1) | strand_) << 32) | diagonal,
-          (lhs_pos << 32) | rhs_pos);
+    for (; n; n--, ++origins) {
+      add_match(kmer, *origins);
     }
   }
 
@@ -485,6 +524,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
   if (minhash) {
     RadixSort(dst.begin(), dst.end(), k_ * 2, Kmer::SortByValue);
     dst.resize(sequence->inflated_len / k_);
+    RadixSort(dst.begin(), dst.end(), 64, Kmer::SortByOrigin);
   }
 
   return dst;
