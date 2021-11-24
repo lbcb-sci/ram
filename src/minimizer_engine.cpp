@@ -237,7 +237,7 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
           origins(origins) {}
 
     bool operator<(const Hit& other) const {
-      return kmer->value < other.kmer->value;
+      return n < other.n;
     }
   };
   std::vector<Hit> filtered_hits;
