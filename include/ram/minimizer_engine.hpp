@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <set>
 
 #include "biosoup/nucleic_acid.hpp"
 #include "biosoup/overlap.hpp"
@@ -39,7 +40,7 @@ class MinimizerEngine {
   void Minimize(
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
-      bool minhash = false);
+      bool minhash = false, double weightedMinimizerSampling = 0);
 
   // set occurrence frequency threshold
   void Filter(double frequency);
@@ -62,9 +63,16 @@ class MinimizerEngine {
   struct Kmer {
    public:
     Kmer() = default;
+
     Kmer(std::uint64_t value, std::uint64_t origin)
         : value(value),
           origin(origin) {
+    }
+
+    Kmer(std::uint64_t value, std::uint64_t origin, double weight)
+        : value(value),
+          origin(origin),
+          weight(weight) {
     }
 
     std::uint32_t id() const {
@@ -89,6 +97,7 @@ class MinimizerEngine {
 
     std::uint64_t value;
     std::uint64_t origin;
+    double weight = 0;
   };
 
   struct Match {
@@ -151,9 +160,11 @@ class MinimizerEngine {
     std::unordered_map<std::uint64_t, std::uint64_t, Hash, KeyEqual> locator;
   };
 
+  std::set<std::uint64_t> CountKmer(const std::unique_ptr<biosoup::NucleicAcid>& sequence, double weightedMinimizerSampling) const;
+
   std::vector<Kmer> Minimize(
       const std::unique_ptr<biosoup::NucleicAcid>& sequence,
-      bool minhash = false) const;
+      bool minhash = false, double weightedMinimizerSampling = 0) const;
 
   std::vector<biosoup::Overlap> Chain(
       std::uint64_t lhs_id,

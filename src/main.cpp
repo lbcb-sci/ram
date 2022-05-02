@@ -27,6 +27,7 @@ static struct option options[] = {
   {"gap", required_argument, nullptr, 'g'},
   {"minhash", no_argument, nullptr, 'M'},
   {"threads", required_argument, nullptr, 't'},
+  {"weighted", optional_argument, nullptr, 'W'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
   {nullptr, 0, nullptr, 0}
@@ -99,6 +100,8 @@ void Help() {
       "      maximal gap between minimizer hits in a chain\n"
       "    --minhash\n"
       "      use only a portion of all minimizers\n"
+      "    --weighted\n"
+      "      use weighted minimizer sampling\n"      
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -120,6 +123,7 @@ int main(int argc, char** argv) {
   double frequency = 0.001;
   bool minhash = false;
   std::uint32_t num_threads = 1;
+  double weightedMinimizerSampling = 0;
 
   std::vector<std::string> input_paths;
 
@@ -136,6 +140,7 @@ int main(int argc, char** argv) {
       case 'f': frequency = std::atof(optarg); break;
       case 'M': minhash = true; break;
       case 't': num_threads = std::atoi(optarg); break;
+      case 'W': weightedMinimizerSampling = std::atof(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
       default: return 1;
@@ -207,7 +212,7 @@ int main(int argc, char** argv) {
 
     timer.Start();
 
-    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash);
+    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash, weightedMinimizerSampling);
     minimizer_engine.Filter(frequency);
 
     std::cerr << "[ram::] minimized targets "

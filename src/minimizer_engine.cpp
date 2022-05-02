@@ -3,7 +3,10 @@
 #include "ram/minimizer_engine.hpp"
 
 #include <deque>
+#include <iostream>
 #include <stdexcept>
+#include <map>
+#include <set>
 
 namespace ram {
 
@@ -45,7 +48,7 @@ std::uint32_t MinimizerEngine::Index::Find(
 void MinimizerEngine::Minimize(
     std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
     std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
-    bool minhash) {
+    bool minhash, double weightedMinimizerSampling) {
 
   for (auto& it : index_) {
     it.origins.clear();
@@ -67,7 +70,7 @@ void MinimizerEngine::Minimize(
         batch_size += (*first)->inflated_len;
         futures.emplace_back(thread_pool_->Submit(
             [&] (decltype(first) it) -> std::vector<Kmer> {
-              return Minimize(*it, minhash);
+              return Minimize(*it, minhash, weightedMinimizerSampling);
             },
             first));
       }
@@ -454,14 +457,87 @@ std::vector<biosoup::Overlap> MinimizerEngine::Chain(
   return dst;
 }
 
+std::set<std::uint64_t> MinimizerEngine::CountKmer(const std::unique_ptr<biosoup::NucleicAcid>& sequence, double weightedMinimizerSampling) const {
+
+  std::unordered_map<std::uint64_t, std::uint64_t> kmerMap; // map containing kmer - count pairs
+  std::uint64_t kmerCount = 0;
+
+  std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
+  std::uint64_t shift = (k_ - 1) * 2;
+  std::uint64_t minimizer = 0;
+  std::uint64_t reverse_minimizer = 0;
+
+  for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
+    std::uint64_t c = sequence->Code(i);
+    minimizer = ((minimizer << 2) | c) & mask;
+    reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
+    if (i >= k_ - 1U) {
+      if (minimizer < reverse_minimizer) {
+        kmerMap[minimizer]++; // we increase count for the minimizer in the map
+      } else if (minimizer > reverse_minimizer) {
+        kmerMap[reverse_minimizer]++; // we increase count for the minimizer in the map
+      }
+      kmerCount++;
+    }
+  }
+
+  std::uint64_t cutoffCount = (weightedMinimizerSampling/100) * kmerCount;
+
+  // desc sorting based on individual kmer count
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> vector;
+  auto comparator = [&] (std::pair<std::uint64_t, std::uint64_t>& a, std::pair<std::uint64_t, std::uint64_t>& b) -> bool {
+    return a.second > b.second;
+  };
+  for (auto& it : kmerMap) {
+    vector.push_back(it);
+  }
+  sort(vector.begin(), vector.end(), comparator);
+
+  // we take all kmers that have count >= cutoffCount (those are the most frequent)
+  std::set<std::uint64_t> set;
+  for (auto &it : vector) {
+    if (it.second >= cutoffCount) {
+      set.insert(it.first);
+    } else {
+      break;
+    }   
+  }
+
+  return set;
+}
+
 std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     const std::unique_ptr<biosoup::NucleicAcid>& sequence,
-    bool minhash) const {
+    bool minhash, double weightedMinimizerSampling) const {
   if (sequence->inflated_len < k_) {
     return std::vector<Kmer>{};
   }
 
+  std::set<std::uint64_t> mostFrequentKmers = CountKmer(sequence, weightedMinimizerSampling);
+
   std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
+
+  auto murmerhash64 = [&] (std::uint64_t key, std::uint64_t mask) -> std::uint64_t {
+    key ^= key >> 33;
+    key *= 0xff51afd7ed558ccd;
+    key ^= key >> 33;
+    key *= 0xc4ceb9fe1a85ec53;
+    key ^= key >> 33;
+    return key & mask;
+  };
+
+  auto applyWeight = [&] (std::uint64_t kmer) -> double {
+    std::uint64_t hash = murmerhash64(kmer, UINT64_MAX);
+    double x = hash * 1.0 / UINT64_MAX;  
+
+    if (mostFrequentKmers.find(kmer) != mostFrequentKmers.end()) {
+      double p2 = x*x;
+      double p4 = p2 * p2;
+      return -1.0 * (p4 * p4);
+    }
+
+    return -1.0 * x;
+  };
 
   auto hash = [&] (std::uint64_t key) -> std::uint64_t {
     key = ((~key) + (key << 21)) & mask;
@@ -475,12 +551,21 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
   };
 
   std::deque<Kmer> window;
+  
   auto window_add = [&] (std::uint64_t value, std::uint64_t location) -> void {
     while (!window.empty() && window.back().value > value) {
       window.pop_back();
     }
     window.emplace_back(value, location);
   };
+
+  auto window_add_with_weight = [&] (std::uint64_t value, std::uint64_t location, double weight) -> void {
+    while (!window.empty() && window.back().weight < weight) {
+      window.pop_back();
+    }
+    window.emplace_back(value, location);
+  };
+
   auto window_update = [&] (std::uint32_t position) -> void {
     while (!window.empty() && (window.front().position()) < position) {
       window.pop_front();
@@ -501,9 +586,17 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
     if (i >= k_ - 1U) {
       if (minimizer < reverse_minimizer) {
-        window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
+        if (weightedMinimizerSampling == 0) {
+          window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
+        } else {
+          window_add_with_weight(hash(minimizer), (i - (k_ - 1U)) << 1 | 0, applyWeight(minimizer));
+        }
       } else if (minimizer > reverse_minimizer) {
-        window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
+        if (weightedMinimizerSampling == 0) {
+          window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
+        } else {
+          window_add_with_weight(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1, applyWeight(minimizer));
+        }
       }
     }
     if (i >= (k_ - 1U) + (w_ - 1U)) {
