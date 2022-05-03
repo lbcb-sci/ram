@@ -513,7 +513,10 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     return std::vector<Kmer>{};
   }
 
-  std::set<std::uint64_t> mostFrequentKmers = CountKmer(sequence, weightedMinimizerSampling);
+  std::set<std::uint64_t> mostFrequentKmers;
+  if (weightedMinimizerSampling != 0) {
+    mostFrequentKmers = CountKmer(sequence, weightedMinimizerSampling);
+  }
 
   std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
 
