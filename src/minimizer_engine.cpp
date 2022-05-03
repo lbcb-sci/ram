@@ -485,7 +485,7 @@ std::set<std::uint64_t> MinimizerEngine::CountKmer(const std::unique_ptr<biosoup
 
   // desc sorting based on individual kmer count
   std::vector<std::pair<std::uint64_t, std::uint64_t>> vector;
-  auto comparator = [&] (std::pair<std::uint64_t, std::uint64_t>& a, std::pair<std::uint64_t, std::uint64_t>& b) -> bool {
+  auto comparator = [&] (std::pair<std::uint64_t, std::uint64_t> a, std::pair<std::uint64_t, std::uint64_t> b) -> bool {
     return a.second > b.second;
   };
   for (auto& it : kmerMap) {
