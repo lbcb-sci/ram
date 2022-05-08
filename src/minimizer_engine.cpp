@@ -1,6 +1,7 @@
 // Copyright (c) 2020 Robert Vaser
 
 #include "ram/minimizer_engine.hpp"
+#include "ram/bloom_filter.hpp"
 
 #include <deque>
 #include <iostream>
@@ -506,6 +507,53 @@ std::set<std::uint64_t> MinimizerEngine::CountKmer(const std::unique_ptr<biosoup
   return set;
 }
 
+void MinimizerEngine::CountKmer(bloom_filter& mostFrequentKmersFilter, const std::unique_ptr<biosoup::NucleicAcid>& sequence, double weightedMinimizerSampling) const {
+
+  std::unordered_map<std::uint64_t, std::uint64_t> kmerMap; // map containing kmer - count pairs
+  std::uint64_t kmerCount = 0;
+
+  std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
+  std::uint64_t shift = (k_ - 1) * 2;
+  std::uint64_t minimizer = 0;
+  std::uint64_t reverse_minimizer = 0;
+
+  for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
+    std::uint64_t c = sequence->Code(i);
+    minimizer = ((minimizer << 2) | c) & mask;
+    reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
+    if (i >= k_ - 1U) {
+      if (minimizer < reverse_minimizer) {
+        kmerMap[minimizer]++; // we increase count for the minimizer in the map
+      } else if (minimizer > reverse_minimizer) {
+        kmerMap[reverse_minimizer]++; // we increase count for the minimizer in the map
+      }
+      kmerCount++;
+    }
+  }
+
+  std::uint64_t cutoffCount = (weightedMinimizerSampling/100) * kmerCount;
+
+  // desc sorting based on individual kmer count
+  std::vector<std::pair<std::uint64_t, std::uint64_t>> vector;
+  auto comparator = [&] (std::pair<std::uint64_t, std::uint64_t> a, std::pair<std::uint64_t, std::uint64_t> b) -> bool {
+    return a.second > b.second;
+  };
+  for (auto& it : kmerMap) {
+    vector.push_back(it);
+  }
+  sort(vector.begin(), vector.end(), comparator);
+
+  // we take all kmers that have count >= cutoffCount (those are the most frequent)
+  for (auto &it : vector) {
+    if (it.second >= cutoffCount) {
+      mostFrequentKmersFilter.insert(it.first);
+    } else {
+      break;
+    }   
+  }
+
+}
+
 std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     const std::unique_ptr<biosoup::NucleicAcid>& sequence,
     bool minhash, double weightedMinimizerSampling) const {
@@ -513,9 +561,19 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     return std::vector<Kmer>{};
   }
 
-  std::set<std::uint64_t> mostFrequentKmers;
+//  std::set<std::uint64_t> mostFrequentKmers;
+//  if (weightedMinimizerSampling != 0) {
+//    mostFrequentKmers = CountKmer(sequence, weightedMinimizerSampling);
+//  }
+
+  bloom_parameters parameters;
+  parameters.projected_element_count = 1000;
+  parameters.false_positive_probability = 0.0001;
+  parameters.random_seed = 0xA5A5A5A5;
+  parameters.compute_optimal_parameters();
+  bloom_filter mostFrequentKmersFilter(parameters);
   if (weightedMinimizerSampling != 0) {
-    mostFrequentKmers = CountKmer(sequence, weightedMinimizerSampling);
+    CountKmer(mostFrequentKmersFilter, sequence, weightedMinimizerSampling);
   }
 
   std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
@@ -533,7 +591,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     std::uint64_t hash = murmerhash64(kmer, UINT64_MAX);
     double x = hash * 1.0 / UINT64_MAX;  
 
-    if (mostFrequentKmers.find(kmer) != mostFrequentKmers.end()) {
+    if (mostFrequentKmersFilter.contains(kmer)) {
       double p2 = x*x;
       double p4 = p2 * p2;
       return -1.0 * (p4 * p4);

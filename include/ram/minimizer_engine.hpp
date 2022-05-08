@@ -13,6 +13,7 @@
 #include "biosoup/nucleic_acid.hpp"
 #include "biosoup/overlap.hpp"
 #include "thread_pool/thread_pool.hpp"
+#include "ram/bloom_filter.hpp"
 
 namespace ram {
 
@@ -161,6 +162,7 @@ class MinimizerEngine {
   };
 
   std::set<std::uint64_t> CountKmer(const std::unique_ptr<biosoup::NucleicAcid>& sequence, double weightedMinimizerSampling) const;
+  void CountKmer(bloom_filter& mostFrequentKmersFilter, const std::unique_ptr<biosoup::NucleicAcid>& sequence, double weightedMinimizerSampling) const;
 
   std::vector<Kmer> Minimize(
       const std::unique_ptr<biosoup::NucleicAcid>& sequence,
