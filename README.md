@@ -47,6 +47,10 @@ usage: ram [options ...] <target> [<sequences>]
       maximal gap between minimizer hits in a chain
     --minhash
       use only a portion of all minimizers
+    --weighted
+      use weighted minimizer sampling      
+    --beginend
+      if number n (greater then 0) provided, first n and last n bases of the sequences will be minimized with kmer_length/2  
     -t, --threads <int>
       default: 1
       number of threads
