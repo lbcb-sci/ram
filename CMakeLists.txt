@@ -170,3 +170,16 @@ if (ram_build_tests)
   target_compile_definitions(ram_test
     PRIVATE TEST_DATA="${PROJECT_SOURCE_DIR}/test/data/sample.fasta.gz")
 endif ()
+
+if (ram_build_tests)
+  add_executable(ram_reference_data_test
+    test/ram_reference_data_test.cpp)
+
+  target_link_libraries(ram_reference_data_test
+    ram
+    bioparser::bioparser)
+
+  target_compile_definitions(ram_reference_data_test PRIVATE VERSION="${PROJECT_VERSION}")
+  target_compile_definitions(ram_reference_data_test
+    PRIVATE TEST_DATA="${PROJECT_SOURCE_DIR}/test/data/chr22_reference_sample.fasta.gz")
+endif ()
