@@ -193,8 +193,11 @@ std::vector<biosoup::Overlap> MinimizerEngine::Map(
     bool avoid_equal,
     bool avoid_symmetric,
     bool minhash,
-    std::vector<std::uint32_t>* filtered) const {
-  auto sketch = Minimize(sequence, minhash);
+    std::vector<std::uint32_t>* filtered,
+    double weightedMinimizerSampling,
+    std::uint32_t beginAndEndSequenceLength, std::uint32_t beginAndEndSequenceK, std::uint32_t beginAndEndSequenceW) const {
+  
+  auto sketch = Minimize(sequence, minhash, weightedMinimizerSampling, beginAndEndSequenceLength, beginAndEndSequenceK, beginAndEndSequenceW);
   if (sketch.empty()) {
     return std::vector<biosoup::Overlap>{};
   }
