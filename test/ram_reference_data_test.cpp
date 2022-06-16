@@ -30,6 +30,9 @@ static struct option options[] = {
   {"minhash", no_argument, nullptr, 'M'},
   {"threads", required_argument, nullptr, 't'},
   {"weighted", optional_argument, nullptr, 'W'},
+  {"beginend", optional_argument, nullptr, 'S'},
+  {"beginendk", optional_argument, nullptr, 'K'},
+  {"beginendw", optional_argument, nullptr, 'I'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
   {nullptr, 0, nullptr, 0}
@@ -101,7 +104,13 @@ void Help() {
       "    --minhash\n"
       "      use only a portion of all minimizers\n"
       "    --weighted\n"
-      "      use weighted minimizer sampling\n"      
+      "      use weighted minimizer sampling\n"
+      "    --beginend\n"
+      "      if number n (greater then 0) provided, first n and last n bases of the sequences will be minimized with kmer length beginendk and window size beginendw\n"  
+      "    --beginendk\n"
+      "      kmer length used with beginend option for beginning and end of sequences\n"
+      "    --beginendw\n"
+      "      window size used with beginend option for beginning and end of sequences\n"
       "    -t, --threads <int>\n"
       "      default: 1\n"
       "      number of threads\n"
@@ -124,6 +133,9 @@ int main(int argc, char** argv) {
   bool minhash = false;
   std::uint32_t num_threads = 1;
   double weightedMinimizerSampling = 0;
+  std::uint32_t beginAndEndSequenceLength = 0;
+  std::uint32_t beginAndEndSequenceK = 0;
+  std::uint32_t beginAndEndSequenceW = 0;
 
   std::vector<std::string> input_paths;
 
@@ -141,6 +153,9 @@ int main(int argc, char** argv) {
       case 'M': minhash = true; break;
       case 't': num_threads = std::atoi(optarg); break;
       case 'W': weightedMinimizerSampling = std::atof(optarg); break;
+      case 'S': beginAndEndSequenceLength = std::atoi(optarg); break;
+      case 'K': beginAndEndSequenceK = std::atoi(optarg); break;
+      case 'I': beginAndEndSequenceW = std::atoi(optarg); break;
       case 'v': std::cout << VERSION << std::endl; return 0;
       case 'h': Help(); return 0;
       default: return 1;
@@ -230,7 +245,7 @@ int main(int argc, char** argv) {
 
     timer.Start();
 
-    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash, weightedMinimizerSampling);
+    minimizer_engine.Minimize(targets.begin(), targets.end(), minhash, weightedMinimizerSampling, beginAndEndSequenceLength, beginAndEndSequenceK, beginAndEndSequenceW);
     minimizer_engine.Filter(frequency);
 
     std::cerr << "[ram::] minimized targets "
