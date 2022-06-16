@@ -52,7 +52,8 @@ class MinimizerEngine {
       bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
       bool minhash = false,  // only lhs
-      std::vector<std::uint32_t>* filtered = nullptr) const;
+      std::vector<std::uint32_t>* filtered = nullptr,
+      double weightedMinimizerSampling = 0) const;
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
