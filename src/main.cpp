@@ -134,8 +134,8 @@ int main(int argc, char** argv) {
   std::uint32_t num_threads = 1;
   double weightedMinimizerSampling = 0;
   std::uint32_t beginAndEndSequenceLength = 0;
-  std::uint32_t beginAndEndSequenceK = 0;
-  std::uint32_t beginAndEndSequenceW = 0;
+  std::uint32_t beginAndEndSequenceK = 10;
+  std::uint32_t beginAndEndSequenceW = 5;
 
   std::vector<std::string> input_paths;
 
