@@ -29,7 +29,7 @@ static struct option options[] = {
   {"gap", required_argument, nullptr, 'g'},
   {"minhash", no_argument, nullptr, 'M'},
   {"threads", required_argument, nullptr, 't'},
-  {"weighted", optional_argument, nullptr, 'W'},
+  {"weighted", required_argument, nullptr, 'W'},
   {"version", no_argument, nullptr, 'v'},
   {"help", no_argument, nullptr, 'h'},
   {nullptr, 0, nullptr, 0}
