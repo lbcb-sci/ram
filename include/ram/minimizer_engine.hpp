@@ -41,7 +41,8 @@ class MinimizerEngine {
   void Minimize(
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
-      bool minhash = false, double weightedMinimizerSampling = 0, std::uint32_t beginAndEndSequenceLength = 0);
+      bool minhash = false, double weightedMinimizerSampling = 0,
+      std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 0, std::uint32_t beginAndEndSequenceW = 0);
 
   // set occurrence frequency threshold
   void Filter(double frequency);
@@ -166,7 +167,8 @@ class MinimizerEngine {
 
   std::vector<Kmer> Minimize(
       const std::unique_ptr<biosoup::NucleicAcid>& sequence,
-      bool minhash = false, double weightedMinimizerSampling = 0, std::uint32_t beginAndEndSequenceLength = 0) const;
+      bool minhash = false, double weightedMinimizerSampling = 0,
+      std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 0, std::uint32_t beginAndEndSequenceW = 0) const;
 
   std::vector<biosoup::Overlap> Chain(
       std::uint64_t lhs_id,
