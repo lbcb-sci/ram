@@ -41,7 +41,8 @@ class MinimizerEngine {
   void Minimize(
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator first,
       std::vector<std::unique_ptr<biosoup::NucleicAcid>>::const_iterator last,
-      bool minhash = false, double weightedMinimizerSampling = 0,
+      bool minhash = false,
+      double weightedMinimizerSampling = 0,
       std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 10, std::uint32_t beginAndEndSequenceW = 5);
 
   // set occurrence frequency threshold
@@ -53,7 +54,9 @@ class MinimizerEngine {
       bool avoid_equal,  // ignore overlaps in which lhs_id == rhs_id
       bool avoid_symmetric,  // ignore overlaps in which lhs_id > rhs_id
       bool minhash = false,  // only lhs
-      std::vector<std::uint32_t>* filtered = nullptr) const;
+      std::vector<std::uint32_t>* filtered = nullptr,
+      double weightedMinimizerSampling = 0,
+      std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 10, std::uint32_t beginAndEndSequenceW = 5) const;
 
   // find overlaps between a pair of sequences
   std::vector<biosoup::Overlap> Map(
@@ -167,7 +170,8 @@ class MinimizerEngine {
 
   std::vector<Kmer> Minimize(
       const std::unique_ptr<biosoup::NucleicAcid>& sequence,
-      bool minhash = false, double weightedMinimizerSampling = 0,
+      bool minhash = false,
+      double weightedMinimizerSampling = 0,
       std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 10, std::uint32_t beginAndEndSequenceW = 5) const;
 
   std::vector<biosoup::Overlap> Chain(
