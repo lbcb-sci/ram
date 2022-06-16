@@ -50,7 +50,11 @@ usage: ram [options ...] <target> [<sequences>]
     --weighted
       use weighted minimizer sampling      
     --beginend
-      if number n (greater then 0) provided, first n and last n bases of the sequences will be minimized with kmer_length/2  
+      if number n (greater then 0) provided, first n and last n bases of the sequences will be minimized with kmer length beginendk and window size beginendw
+    --beginendk
+      kmer length used with beginend option for beginning and end of sequences
+    --beginendw
+      window size used with beginend option for beginning and end of sequences
     -t, --threads <int>
       default: 1
       number of threads
