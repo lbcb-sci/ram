@@ -562,8 +562,62 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     const std::unique_ptr<biosoup::NucleicAcid>& sequence,
     bool minhash, double weightedMinimizerSampling,
     std::uint32_t beginAndEndSequenceLength, std::uint32_t beginAndEndSequenceK, std::uint32_t beginAndEndSequenceW) const {
-  if (sequence->inflated_len < k_) {
-    return std::vector<Kmer>{};
+
+  std::vector<Kmer> dst;
+
+  std::uint32_t startOfSampling = 0;
+  std::uint32_t endOfSampling = 0;
+
+  // We use same kmer length for entire sequence
+  if (beginAndEndSequenceLength == 0) {
+
+    startOfSampling = 0;
+    endOfSampling = sequence->inflated_len;
+
+    Minimize(sequence, dst, minhash, weightedMinimizerSampling, k_, w_, startOfSampling, endOfSampling);
+    
+  } 
+  // We use different kmer lengths for beggining and end of sequence
+  else {
+
+    //First we take minimizers from the beggining of the sequence with beginAndEndSequenceK    
+    startOfSampling = 0;
+    if (beginAndEndSequenceLength < sequence->inflated_len) {
+      endOfSampling = beginAndEndSequenceLength;
+    } else {
+      endOfSampling = sequence->inflated_len;
+    }
+    Minimize(sequence, dst, minhash, weightedMinimizerSampling, beginAndEndSequenceK, beginAndEndSequenceW, startOfSampling, endOfSampling);
+
+    //Then we take minimizers from the middle of the sequence with kmer_length
+    if (sequence->inflated_len > 2 * beginAndEndSequenceLength) {
+
+      startOfSampling = beginAndEndSequenceLength;
+      endOfSampling = sequence->inflated_len - beginAndEndSequenceLength;
+      Minimize(sequence, dst, minhash, weightedMinimizerSampling, k_, w_, startOfSampling, endOfSampling);
+
+    }
+
+    //At the end we take minimizers from the end of the sequence with beginAndEndSequenceK
+    startOfSampling = endOfSampling;
+    endOfSampling = sequence->inflated_len;
+    Minimize(sequence, dst, minhash, weightedMinimizerSampling, beginAndEndSequenceK, beginAndEndSequenceW, startOfSampling, endOfSampling);
+
+  }
+
+  return dst;
+}
+
+void MinimizerEngine::Minimize(
+    const std::unique_ptr<biosoup::NucleicAcid>& sequence,
+    std::vector<Kmer>& kmerVector,
+    bool minhash, double weightedMinimizerSampling,
+    std::uint32_t k, std::uint32_t w,
+    std::uint32_t startOfSampling,
+    std::uint32_t endOfSampling) const {
+  
+  if (sequence->inflated_len < k) {
+    return;
   }
 
   bloom_parameters parameters;
@@ -576,7 +630,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     CountKmer(mostFrequentKmersFilter, sequence, weightedMinimizerSampling);
   }
 
-  std::uint64_t mask = (1ULL << (k_ * 2)) - 1;
+  std::uint64_t mask = (1ULL << (k * 2)) - 1;
 
   auto murmerhash64 = [&] (std::uint64_t key, std::uint64_t mask) -> std::uint64_t {
     key ^= key >> 33;
@@ -633,7 +687,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     }
   };
 
-  std::uint64_t shift = (k_ - 1) * 2;
+  std::uint64_t shift = (k - 1) * 2;
   std::uint64_t minimizer = 0;
   std::uint64_t reverse_minimizer = 0;
   std::uint64_t id = static_cast<std::uint64_t>(sequence->id) << 32;
@@ -641,174 +695,50 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
   std::vector<Kmer> dst;
 
-  if (beginAndEndSequenceLength == 0) {
-
-    for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
-      std::uint64_t c = sequence->Code(i);
-      minimizer = ((minimizer << 2) | c) & mask;
-      reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
-      if (i >= k_ - 1U) {
-        if (minimizer < reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
-          } else {
-            window_add_with_weight(hash(minimizer), (i - (k_ - 1U)) << 1 | 0, applyWeight(minimizer));
-          }
-        } else if (minimizer > reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
-          } else {
-            window_add_with_weight(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1, applyWeight(minimizer));
-          }
+  for (std::uint32_t i = startOfSampling; i < endOfSampling; ++i) {
+    std::uint64_t c = sequence->Code(i);
+    minimizer = ((minimizer << 2) | c) & mask;
+    reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
+    if (i >= k - 1U) {
+      if (minimizer < reverse_minimizer) {
+        if (weightedMinimizerSampling == 0) {
+          window_add(hash(minimizer), (i - (k - 1U)) << 1 | 0);
+        } else {
+          window_add_with_weight(hash(minimizer), (i - (k - 1U)) << 1 | 0, applyWeight(minimizer));
         }
-      }
-      if (i >= (k_ - 1U) + (w_ - 1U)) {
-        for (auto it = window.begin(); it != window.end(); ++it) {
-          if (it->value != window.front().value) {
-            break;
-          }
-          if (it->origin & is_stored) {
-            continue;
-          }
-          dst.emplace_back(it->value, id | it->origin);
-          it->origin |= is_stored;
+      } else if (minimizer > reverse_minimizer) {
+        if (weightedMinimizerSampling == 0) {
+          window_add(hash(reverse_minimizer), (i - (k - 1U)) << 1 | 1);
+        } else {
+          window_add_with_weight(hash(reverse_minimizer), (i - (k - 1U)) << 1 | 1, applyWeight(minimizer));
         }
-        window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
       }
     }
-
-  } else {
-
-    std::uint64_t beginAndEndSequenceShift = (beginAndEndSequenceK - 1) * 2;
-
-    std::uint32_t endOfSampling = 0;
-
-    //First we take minimizers from the beggining of the sequence with kmer_length/2    
-    if (beginAndEndSequenceLength < sequence->inflated_len) {
-      endOfSampling = beginAndEndSequenceLength;
-    } else {
-      endOfSampling = sequence->inflated_len;
+    if (i >= (k - 1U) + (w - 1U)) {
+      for (auto it = window.begin(); it != window.end(); ++it) {
+        if (it->value != window.front().value) {
+          break;
+        }
+        if (it->origin & is_stored) {
+          continue;
+        }
+        dst.emplace_back(it->value, id | it->origin);
+        it->origin |= is_stored;
+      }
+      window_update(i - (k - 1U) - (w - 1U) + 1);
     }
-
-    for (std::uint32_t i = 0; i < endOfSampling; ++i) {
-      std::uint64_t c = sequence->Code(i);
-      minimizer = ((minimizer << 2) | c) & mask;
-      reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << beginAndEndSequenceShift);
-      if (i >= beginAndEndSequenceK - 1U) {
-        if (minimizer < reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 0);
-          } else {
-            window_add_with_weight(hash(minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 0, applyWeight(minimizer));
-          }
-        } else if (minimizer > reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(reverse_minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 1);
-          } else {
-            window_add_with_weight(hash(reverse_minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 1, applyWeight(minimizer));
-          }
-        }
-      }
-      if (i >= (beginAndEndSequenceK - 1U) + (beginAndEndSequenceW - 1U)) {
-        for (auto it = window.begin(); it != window.end(); ++it) {
-          if (it->value != window.front().value) {
-            break;
-          }
-          if (it->origin & is_stored) {
-            continue;
-          }
-          dst.emplace_back(it->value, id | it->origin);
-          it->origin |= is_stored;
-        }
-        window_update(i - (beginAndEndSequenceK - 1U) - (beginAndEndSequenceW - 1U) + 1);
-      }
-    }
-
-    //Then we take minimizers from the middle of the sequence with kmer_length
-    if (sequence->inflated_len > 2 * beginAndEndSequenceLength) {
-
-      endOfSampling = sequence->inflated_len - beginAndEndSequenceLength;
-
-      for (std::uint32_t i = beginAndEndSequenceLength; i < endOfSampling; ++i) {
-        std::uint64_t c = sequence->Code(i);
-        minimizer = ((minimizer << 2) | c) & mask;
-        reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
-        if (i >= k_ - 1U) {
-          if (minimizer < reverse_minimizer) {
-            if (weightedMinimizerSampling == 0) {
-              window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);
-            } else {
-              window_add_with_weight(hash(minimizer), (i - (k_ - 1U)) << 1 | 0, applyWeight(minimizer));
-            }
-          } else if (minimizer > reverse_minimizer) {
-            if (weightedMinimizerSampling == 0) {
-              window_add(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1);
-            } else {
-              window_add_with_weight(hash(reverse_minimizer), (i - (k_ - 1U)) << 1 | 1, applyWeight(minimizer));
-            }
-          }
-        }
-        if (i >= (k_ - 1U) + (w_ - 1U)) {
-          for (auto it = window.begin(); it != window.end(); ++it) {
-            if (it->value != window.front().value) {
-              break;
-            }
-            if (it->origin & is_stored) {
-              continue;
-            }
-            dst.emplace_back(it->value, id | it->origin);
-            it->origin |= is_stored;
-          }
-          window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
-        }
-      }
-
-    }
-
-    //At the end we take minimizers from the end of the sequence with kmer_length/2
-    for (std::uint32_t i = endOfSampling; i < sequence->inflated_len; ++i) {
-      std::uint64_t c = sequence->Code(i);
-      minimizer = ((minimizer << 2) | c) & mask;
-      reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << beginAndEndSequenceShift);
-      if (i >= beginAndEndSequenceK - 1U) {
-        if (minimizer < reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 0);
-          } else {
-            window_add_with_weight(hash(minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 0, applyWeight(minimizer));
-          }
-        } else if (minimizer > reverse_minimizer) {
-          if (weightedMinimizerSampling == 0) {
-            window_add(hash(reverse_minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 1);
-          } else {
-            window_add_with_weight(hash(reverse_minimizer), (i - (beginAndEndSequenceK - 1U)) << 1 | 1, applyWeight(minimizer));
-          }
-        }
-      }
-      if (i >= (beginAndEndSequenceK - 1U) + (beginAndEndSequenceW - 1U)) {
-        for (auto it = window.begin(); it != window.end(); ++it) {
-          if (it->value != window.front().value) {
-            break;
-          }
-          if (it->origin & is_stored) {
-            continue;
-          }
-          dst.emplace_back(it->value, id | it->origin);
-          it->origin |= is_stored;
-        }
-        window_update(i - (beginAndEndSequenceK - 1U) - (beginAndEndSequenceW - 1U) + 1);
-      }
-    }
-
   }
 
   if (minhash) {
-    RadixSort(dst.begin(), dst.end(), k_ * 2, Kmer::SortByValue);
-    dst.resize(sequence->inflated_len / k_);
+    RadixSort(dst.begin(), dst.end(), k * 2, Kmer::SortByValue);
+    dst.resize(sequence->inflated_len / k);
     RadixSort(dst.begin(), dst.end(), 64, Kmer::SortByOrigin);
   }
 
-  return dst;
+  for (auto kmer : dst) {
+    kmerVector.emplace_back(kmer);
+  }
+
 }
 
 template<typename RandomAccessIterator, typename Compare>

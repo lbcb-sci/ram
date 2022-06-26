@@ -174,6 +174,15 @@ class MinimizerEngine {
       double weightedMinimizerSampling = 0,
       std::uint32_t beginAndEndSequenceLength = 0, std::uint32_t beginAndEndSequenceK = 10, std::uint32_t beginAndEndSequenceW = 5) const;
 
+  void Minimize(
+      const std::unique_ptr<biosoup::NucleicAcid>& sequence,
+      std::vector<Kmer>& kmerVector,
+      bool minhash = false,
+      double weightedMinimizerSampling = 0,
+      std::uint32_t k = 15, std::uint32_t w = 5,
+      std::uint32_t startOfSampling = 0,
+      std::uint32_t endOfSampling = 0) const;
+
   std::vector<biosoup::Overlap> Chain(
       std::uint64_t lhs_id,
       std::vector<Match>&& matches) const;
