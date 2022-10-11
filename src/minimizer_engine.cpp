@@ -15,7 +15,7 @@ MinimizerEngine::MinimizerEngine(
     std::uint32_t chain,
     std::uint32_t matches,
     std::uint32_t gap)
-    : k_(std::min(std::max(k, 1U), 31U)),
+    : k_(std::min(std::max(k, 1U), 20U)),
       w_(w),
       bandwidth_(bandwidth),
       chain_(chain),
@@ -487,7 +487,7 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     }
   };
 
-  std::uint64_t shift = (k_ - 1) * 2;
+  std::uint64_t shift = (k_ - 1) * 3;
   std::uint64_t minimizer = 0;
   std::uint64_t reverse_minimizer = 0;
   std::uint64_t id = static_cast<std::uint64_t>(sequence->id) << 32;
@@ -497,8 +497,8 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
   for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
     std::uint64_t c = sequence->Code(i);
-    minimizer = ((minimizer << 2) | c) & mask;
-    reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
+    minimizer = ((minimizer << 3) | c) & mask;
+    reverse_minimizer = (reverse_minimizer >> 3) | ((c ^ 7) << shift);
     if (i >= k_ - 1U) {
       if (minimizer < reverse_minimizer) {
         window_add(hash(minimizer), (i - (k_ - 1U)) << 1 | 0);

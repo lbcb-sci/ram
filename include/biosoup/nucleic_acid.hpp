@@ -23,7 +23,7 @@ constexpr static std::uint8_t kNucleotideCoder[] = {
     255, 255, 255, 255, 255, 255, 255, 255,
     255, 255, 255, 255, 255, 255, 255, 255,
     255,   0,   1 ,  1,   0, 255, 255,   2,
-      3, 255, 255,   2, 255,   1,   0, 255,
+      3, 255, 255,   2, 255,   4,   0, 255,
     255, 255,   0,   1,   3,   3,   2,   0,
     255,   3, 255, 255, 255, 255, 255, 255,
     255,   0,   1,   1,   0, 255, 255,   2,
@@ -33,7 +33,7 @@ constexpr static std::uint8_t kNucleotideCoder[] = {
 };
 
 constexpr static char kNucleotideDecoder[] = {
-    'A', 'C', 'G', 'T'
+    'A', 'C', 'G', 'T', 'M'
 };
 
 class NucleicAcid {
@@ -56,7 +56,7 @@ class NucleicAcid {
         block_quality(),
         inflated_len(data_len),
         is_reverse_complement(0) {
-    deflated_data.reserve(data_len / 32. + .999);
+    deflated_data.reserve(data_len / 21. + .999);
     std::uint64_t block = 0;
     for (std::uint32_t i = 0; i < data_len; ++i) {
       std::uint64_t c = kNucleotideCoder[static_cast<std::uint8_t>(data[i])];
@@ -64,8 +64,8 @@ class NucleicAcid {
         throw std::invalid_argument(
             "[biosoup::NucleicAcid::NucleicAcid] error: not a nucleotide");
       }
-      block |= c << ((i << 1) & 63);
-      if (((i + 1) & 31) == 0 || i == data_len - 1) {
+      block |= c << ((i * 3) & 63);
+      if (((i + 1) % 21) == 0 || i == data_len - 1) {
         deflated_data.emplace_back(block);
         block = 0;
       }
@@ -114,9 +114,9 @@ class NucleicAcid {
     std::uint64_t x = 0;
     if (is_reverse_complement) {
       i = inflated_len - i - 1;
-      x = 3;
+      x = 7;
     }
-    return ((deflated_data[i >> 5] >> ((i << 1) & 63)) & 3) ^ x;
+    return ((deflated_data[i / 21] >> ((i * 3) & 63)) & 7) ^ x;
   }
 
   std::uint8_t Score(std::uint32_t i) const {
