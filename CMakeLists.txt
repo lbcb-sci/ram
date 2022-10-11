@@ -24,28 +24,7 @@ option(ram_install "Generate library install target" OFF)
 option(ram_build_exe "Build executable" ${ram_main_project})
 option(ram_build_tests "Build unit tests" ${ram_main_project})
 
-find_package(biosoup 0.10.0 QUIET)
 find_package(thread_pool 4.0.0 QUIET)
-
-if (NOT biosoup_FOUND)
-  if (ram_install)
-    message(FATAL_ERROR "Missing package biosoup!")
-  endif ()
-
-  FetchContent_Declare(
-    biosoup
-    GIT_REPOSITORY https://github.com/rvaser/biosoup
-    GIT_TAG 0.10.0)
-
-  FetchContent_GetProperties(biosoup)
-  if (NOT biosoup_POPULATED)
-    FetchContent_Populate(biosoup)
-    add_subdirectory(
-      ${biosoup_SOURCE_DIR}
-      ${biosoup_BINARY_DIR}
-      EXCLUDE_FROM_ALL)
-  endif ()
-endif ()
 
 if (NOT thread_pool_FOUND)
   if (ram_install)
@@ -105,6 +84,9 @@ if (ram_build_tests)
     endif ()
   endif ()
 endif ()
+
+add_library(biosoup INTERFACE)
+add_library(biosoup::biosoup ALIAS biosoup)
 
 add_library(ram
   src/minimizer_engine.cpp)
