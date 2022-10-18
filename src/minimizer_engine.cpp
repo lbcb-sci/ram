@@ -526,8 +526,11 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 
     if (uniform_minimizer_sampling_counter == uniform_minimizer_sampling_window_length) {
       SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length, minhash);
+      uniform_minimizer_sampling_counter = 0;
     }
   }
+
+  SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length, minhash);
 
   return dst;
 }
@@ -545,6 +548,8 @@ void MinimizerEngine::SelectMinimizers(
   }
 
   dst->insert(dst->end(), tmp->begin(), tmp->end());
+
+  tmp->clear();
 
 }
 
