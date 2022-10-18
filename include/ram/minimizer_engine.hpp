@@ -175,8 +175,7 @@ class MinimizerEngine {
   void SelectMinimizers(
       std::vector<Kmer> *dest,
       std::vector<Kmer> *temp,
-      long uniform_minimizer_sampling_window_length,
-      bool minhash
+      long uniform_minimizer_sampling_window_length
   ) const;
 
   std::uint32_t k_;

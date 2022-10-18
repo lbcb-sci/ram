@@ -525,12 +525,12 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
     }
 
     if (uniform_minimizer_sampling_counter == uniform_minimizer_sampling_window_length) {
-      SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length, minhash);
+      SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length);
       uniform_minimizer_sampling_counter = 0;
     }
   }
 
-  SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length, minhash);
+  SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length);
 
   return dst;
 }
@@ -538,16 +538,11 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
 void MinimizerEngine::SelectMinimizers(
   std::vector<Kmer> *dst,
   std::vector<Kmer> *tmp,
-  long uniform_minimizer_sampling_window_length,
-  bool minhash) const {
+  long uniform_minimizer_sampling_window_length) const {
 
-  if (minhash) {
-    RadixSort(tmp->begin(), tmp->end(), k_ * 2, Kmer::SortByValue);
-    tmp->resize(uniform_minimizer_sampling_window_length / k_);
-    RadixSort(tmp->begin(), tmp->end(), 64, Kmer::SortByOrigin);
+  for (long i = 0; i < tmp->size(); i+=2) {
+    dst->emplace_back(tmp->at(i));
   }
-
-  dst->insert(dst->end(), tmp->begin(), tmp->end());
 
   tmp->clear();
 
