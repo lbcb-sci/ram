@@ -494,8 +494,12 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
   std::uint64_t is_stored = 1ULL << 63;
 
   std::vector<Kmer> dst;
+  
+  long uniform_minimizer_sampling_window_length = 100;
+  long uniform_minimizer_sampling_counter = 0;
+  std::vector<Kmer> tmp;
 
-  for (std::uint32_t i = 0; i < sequence->inflated_len; ++i) {
+  for (std::uint32_t i = 0; i < sequence->inflated_len; ++i, uniform_minimizer_sampling_counter++) {
     std::uint64_t c = sequence->Code(i);
     minimizer = ((minimizer << 2) | c) & mask;
     reverse_minimizer = (reverse_minimizer >> 2) | ((c ^ 3) << shift);
@@ -514,20 +518,34 @@ std::vector<MinimizerEngine::Kmer> MinimizerEngine::Minimize(
         if (it->origin & is_stored) {
           continue;
         }
-        dst.emplace_back(it->value, id | it->origin);
+        tmp.emplace_back(it->value, id | it->origin);
         it->origin |= is_stored;
       }
       window_update(i - (k_ - 1U) - (w_ - 1U) + 1);
     }
-  }
 
-  if (minhash) {
-    RadixSort(dst.begin(), dst.end(), k_ * 2, Kmer::SortByValue);
-    dst.resize(sequence->inflated_len / k_);
-    RadixSort(dst.begin(), dst.end(), 64, Kmer::SortByOrigin);
+    if (uniform_minimizer_sampling_counter == uniform_minimizer_sampling_window_length) {
+      SelectMinimizers(&dst, &tmp, uniform_minimizer_sampling_window_length, minhash);
+    }
   }
 
   return dst;
+}
+
+void MinimizerEngine::SelectMinimizers(
+  std::vector<Kmer> *dst,
+  std::vector<Kmer> *tmp,
+  long uniform_minimizer_sampling_window_length,
+  bool minhash) const {
+
+  if (minhash) {
+    RadixSort(tmp->begin(), tmp->end(), k_ * 2, Kmer::SortByValue);
+    tmp->resize(uniform_minimizer_sampling_window_length / k_);
+    RadixSort(tmp->begin(), tmp->end(), 64, Kmer::SortByOrigin);
+  }
+
+  dst->insert(dst->end(), tmp->begin(), tmp->end());
+
 }
 
 template<typename RandomAccessIterator, typename Compare>

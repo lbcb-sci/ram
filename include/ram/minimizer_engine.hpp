@@ -171,6 +171,13 @@ class MinimizerEngine {
       std::vector<Match>::const_iterator first,
       std::vector<Match>::const_iterator last,
       Compare comp);  // binary comparison function
+  
+  void SelectMinimizers(
+      std::vector<Kmer> *dest,
+      std::vector<Kmer> *temp,
+      long uniform_minimizer_sampling_window_length,
+      bool minhash
+  ) const;
 
   std::uint32_t k_;
   std::uint32_t w_;
